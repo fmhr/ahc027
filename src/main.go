@@ -197,6 +197,43 @@ func (s *State) move(d int) bool {
 	return true
 }
 
+// Goal (0,0)
+func (s *State) toGoal() {
+	// goalからの距離を計算
+	// 現在地からgoalを目指す
+	var distance [40][40]int
+	points := []Point{{0, 0}}
+	reached := [40][40]bool{}
+	reached[0][0] = true
+	for len(points) > 0 {
+		now := points[0]
+		points = points[1:]
+		for i := 0; i < 4; i++ {
+			if canMove(now.y, now.x, i) {
+				next := Point{now.y + rdluPoint[i].y, now.x + rdluPoint[i].x}
+				if !reached[next.y][next.x] || distance[next.y][next.x] > distance[now.y][now.x]+1 {
+					distance[next.y][next.x] = distance[now.y][now.x] + 1
+					reached[next.y][next.x] = true
+					points = append(points, next)
+				}
+			}
+		}
+	}
+	gridView(distance)
+	for s.position.y != 0 || s.position.x != 0 {
+		for i := 0; i < 4; i++ {
+			if canMove(s.position.y, s.position.x, i) {
+				next := Point{s.position.y + rdluPoint[i].y, s.position.x + rdluPoint[i].x}
+				if distance[next.y][next.x] < distance[s.position.y][s.position.x] {
+					s.move(i)
+					break
+				}
+			}
+		}
+		log.Println(s.position)
+	}
+}
+
 func beamSearch() {
 	beamWidth := 200
 	beamDepth := 2000
@@ -215,6 +252,7 @@ func beamSearch() {
 		states = make([]*State, 0, beamWidth)
 		states = nextStates[:MinInt(beamWidth, len(nextStates))]
 	}
+	states[0].toGoal()
 	checkOutput(states[0].OUTPUT)
 	fmt.Println(states[0].OUTPUT)
 }
@@ -230,19 +268,23 @@ func checkOutput(output string) {
 	state := State{position: Point{0, 0}}
 	var reached [40][40]bool
 	for _, o := range output {
-		state.move(rdluNameToDirection(string(o)))
+		rtn := state.move(rdluNameToDirection(string(o)))
+		if !rtn {
+			log.Println("invalid output")
+		}
 		reached[state.position.y][state.position.x] = true
 	}
 
 	noReaches := make([]Point, 0, N*N)
 	for i := 0; i < N; i++ {
+		//	log.Println(reached[i][:N])
 		for j := 0; j < N; j++ {
 			if !reached[i][j] {
 				noReaches = append(noReaches, Point{i, j})
 			}
 		}
 	}
-	log.Println("noReaches:", len(noReaches), noReaches)
+	log.Println("noReaches:", len(noReaches), "/", N*N, noReaches)
 
 	if state.position.y != 0 || state.position.x != 0 {
 		log.Println("not reached goal")
