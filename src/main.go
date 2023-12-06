@@ -91,7 +91,7 @@ func gridView(grid [40][40]int) {
 		}
 		buffer.WriteString("\n")
 	}
-	fmt.Print(buffer.String())
+	log.Printf("\n %s\n", buffer.String())
 }
 
 // --------------------------------------------------------------------
@@ -192,6 +192,11 @@ func (s *State) move(d int) bool {
 	s.position.y += rdluPoint[d].y
 	s.position.x += rdluPoint[d].x
 	s.collectedTrashAmount += dirtiness[s.position.y][s.position.x] * (s.turn - s.fields[s.position.y][s.position.x].lastVistidTime)
+	if s.fields[s.position.y][s.position.x].lastVistidTime == 0 {
+		s.collectedTrashAmount += 100 * (s.turn + 1)
+	} else {
+		s.collectedTrashAmount += 10 * (s.turn - s.fields[s.position.y][s.position.x].lastVistidTime)
+	}
 	s.fields[s.position.y][s.position.x].lastVistidTime = s.turn
 	s.OUTPUT += rdluName[d]
 	return true
@@ -219,7 +224,7 @@ func (s *State) toGoal() {
 			}
 		}
 	}
-	gridView(distance)
+	//	gridView(distance)
 	for s.position.y != 0 || s.position.x != 0 {
 		for i := 0; i < 4; i++ {
 			if canMove(s.position.y, s.position.x, i) {
@@ -230,13 +235,12 @@ func (s *State) toGoal() {
 				}
 			}
 		}
-		log.Println(s.position)
 	}
 }
 
 func beamSearch() {
-	beamWidth := 200
-	beamDepth := 2000
+	beamWidth := 10
+	beamDepth := 10000
 	nowState := State{position: Point{0, 0}}
 	states := []*State{&nowState}
 	for beamDepth > 0 {
