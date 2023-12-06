@@ -110,6 +110,15 @@ const (
 var rdluPoint = []Point{{0, 1}, {1, 0}, {0, -1}, {-1, 0}}
 var rdluName = []string{"R", "D", "L", "U"} // +2%4 で反対向き
 
+func rdluNameToDirection(name string) int {
+	for i, n := range rdluName {
+		if n == name {
+			return i
+		}
+	}
+	panic("invalid name")
+}
+
 // wallExists check if there is a wall in the direction d from (i, j)
 func wallExists(i, j, d int) bool {
 	switch d {
@@ -164,26 +173,28 @@ func (s *State) Clone() *State {
 func (s *State) nextState() (rtn *[]*State) {
 	rtn = &[]*State{}
 	for i := 0; i < 4; i++ {
-		n := s.move(i)
-		if n != nil {
-			*rtn = append(*rtn, n)
+		n := s.Clone()
+		if n.move(i) {
+			if n != nil {
+				*rtn = append(*rtn, n)
+			}
 		}
 	}
 	return
 }
 
-func (s *State) move(d int) (rtn *State) {
+// move returns true if the move was successful
+func (s *State) move(d int) bool {
 	if !canMove(s.position.y, s.position.x, d) {
-		return nil
+		return false
 	}
-	rtn = s.Clone()
-	rtn.turn++
-	rtn.position.y += rdluPoint[d].y
-	rtn.position.x += rdluPoint[d].x
-	rtn.collectedTrashAmount += dirtiness[rtn.position.y][rtn.position.x] * (s.turn - s.fields[rtn.position.y][rtn.position.x].lastVistidTime)
-	rtn.fields[rtn.position.y][rtn.position.x].lastVistidTime = s.turn
-	rtn.OUTPUT += rdluName[d]
-	return
+	s.turn++
+	s.position.y += rdluPoint[d].y
+	s.position.x += rdluPoint[d].x
+	s.collectedTrashAmount += dirtiness[s.position.y][s.position.x] * (s.turn - s.fields[s.position.y][s.position.x].lastVistidTime)
+	s.fields[s.position.y][s.position.x].lastVistidTime = s.turn
+	s.OUTPUT += rdluName[d]
+	return true
 }
 
 func beamSearch() {
@@ -204,6 +215,7 @@ func beamSearch() {
 		states = make([]*State, 0, beamWidth)
 		states = nextStates[:MinInt(beamWidth, len(nextStates))]
 	}
+	checkOutput(states[0].OUTPUT)
 	fmt.Println(states[0].OUTPUT)
 }
 
@@ -212,4 +224,28 @@ func MinInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func checkOutput(output string) {
+	state := State{position: Point{0, 0}}
+	var reached [40][40]bool
+	for _, o := range output {
+		state.move(rdluNameToDirection(string(o)))
+		reached[state.position.y][state.position.x] = true
+	}
+
+	noReaches := make([]Point, 0, N*N)
+	for i := 0; i < N; i++ {
+		for j := 0; j < N; j++ {
+			if !reached[i][j] {
+				noReaches = append(noReaches, Point{i, j})
+			}
+		}
+	}
+	log.Println("noReaches:", len(noReaches), noReaches)
+
+	if state.position.y != 0 || state.position.x != 0 {
+		log.Println("not reached goal")
+		return
+	}
 }
