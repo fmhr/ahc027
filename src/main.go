@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"sort"
 )
 
 func main() {
 	log.SetFlags(log.Lshortfile)
 	readInput()
+	beamSearch()
 }
 
 var N int
@@ -124,24 +126,90 @@ func wallExists(i, j, d int) bool {
 	}
 }
 
-// --------------------------------------------------------------------
-var visited [40][40]bool
-
-func dfs(i, j int) {
-	visited[i][j] = true
-	for d := 0; d < 4; d++ {
-		ny := i + rdluPoint[d].y
-		nx := j + rdluPoint[d].x
-		if ny < 0 || ny >= N || nx < 0 || nx >= N {
-			continue
-		}
-		if visited[ny][nx] {
-			continue
-		}
-		if wallExists(i, j, d) {
-			continue
-		}
-		fmt.Println(rdluName[d])
-		dfs(ny, nx)
+// canMove check if you can move from (i, j) in the direction d
+func canMove(i, j, d int) bool {
+	y := i + rdluPoint[d].y
+	x := j + rdluPoint[d].x
+	if y < 0 || x < 0 || y >= N || x >= N {
+		return false
 	}
+	return !wallExists(i, j, d)
+}
+
+// --------------------------------------------------------------------
+// beamsearch
+// TODO: あらかじめ、各マスから行動できるマスを計算しておく
+
+type Cell struct {
+	lastVistidTime int
+}
+
+type State struct {
+	turn                 int
+	position             Point
+	collectedTrashAmount int
+	fields               [40][40]Cell
+	OUTPUT               string
+}
+
+func (s *State) Clone() *State {
+	rtn := *s
+	rtn.position = s.position
+	rtn.collectedTrashAmount = s.collectedTrashAmount
+	rtn.fields = s.fields
+	rtn.OUTPUT = s.OUTPUT
+	return &rtn
+}
+
+func (s *State) nextState() (rtn *[]*State) {
+	rtn = &[]*State{}
+	for i := 0; i < 4; i++ {
+		n := s.move(i)
+		if n != nil {
+			*rtn = append(*rtn, n)
+		}
+	}
+	return
+}
+
+func (s *State) move(d int) (rtn *State) {
+	if !canMove(s.position.y, s.position.x, d) {
+		return nil
+	}
+	rtn = s.Clone()
+	rtn.turn++
+	rtn.position.y += rdluPoint[d].y
+	rtn.position.x += rdluPoint[d].x
+	rtn.collectedTrashAmount += dirtiness[rtn.position.y][rtn.position.x] * (s.turn - s.fields[rtn.position.y][rtn.position.x].lastVistidTime)
+	rtn.fields[rtn.position.y][rtn.position.x].lastVistidTime = s.turn
+	rtn.OUTPUT += rdluName[d]
+	return
+}
+
+func beamSearch() {
+	beamWidth := 200
+	beamDepth := 2000
+	nowState := State{position: Point{0, 0}}
+	states := []*State{&nowState}
+	for beamDepth > 0 {
+		beamDepth--
+		nextStates := []*State{}
+		for _, state := range states {
+			tmpstates := state.nextState()
+			nextStates = append(nextStates, *tmpstates...)
+		}
+		sort.Slice(nextStates, func(i, j int) bool {
+			return nextStates[i].collectedTrashAmount > nextStates[j].collectedTrashAmount
+		})
+		states = make([]*State, 0, beamWidth)
+		states = nextStates[:MinInt(beamWidth, len(nextStates))]
+	}
+	fmt.Println(states[0].OUTPUT)
+}
+
+func MinInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
