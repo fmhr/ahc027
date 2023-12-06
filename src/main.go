@@ -14,13 +14,13 @@ func main() {
 var N int
 var hWall [40][40]bool
 var vWall [40][40]bool
+var dirtiness [40][40]int
 
 func readInput() {
 	_, err := fmt.Scan(&N)
 	if err != nil {
 		log.Fatal(err)
 	}
-	var d [40][40]int
 	for i := 0; i < N-1; i++ {
 		var s string
 		_, err := fmt.Scan(&s)
@@ -47,14 +47,14 @@ func readInput() {
 	}
 	for i := 0; i < N; i++ {
 		for j := 0; j < N; j++ {
-			_, err := fmt.Scan(&d[i][j])
+			_, err := fmt.Scan(&dirtiness[i][j])
 			if err != nil {
 				log.Fatal(err)
 			}
 		}
 	}
 
-	gridView(d)
+	gridView(dirtiness)
 }
 
 func gridView(grid [40][40]int) {
@@ -90,4 +90,58 @@ func gridView(grid [40][40]int) {
 		buffer.WriteString("\n")
 	}
 	fmt.Print(buffer.String())
+}
+
+// --------------------------------------------------------------------
+// 共通
+type Point struct {
+	y, x int
+}
+
+const (
+	Right = iota
+	Down
+	Left
+	Up
+)
+
+var rdluPoint = []Point{{0, 1}, {1, 0}, {0, -1}, {-1, 0}}
+var rdluName = []string{"R", "D", "L", "U"} // +2%4 で反対向き
+
+// wallExists check if there is a wall in the direction d from (i, j)
+func wallExists(i, j, d int) bool {
+	switch d {
+	case Right:
+		return vWall[i][j]
+	case Down:
+		return hWall[i][j]
+	case Left:
+		return vWall[i][j-1]
+	case Up:
+		return hWall[i-1][j]
+	default:
+		panic("invalid direction")
+	}
+}
+
+// --------------------------------------------------------------------
+var visited [40][40]bool
+
+func dfs(i, j int) {
+	visited[i][j] = true
+	for d := 0; d < 4; d++ {
+		ny := i + rdluPoint[d].y
+		nx := j + rdluPoint[d].x
+		if ny < 0 || ny >= N || nx < 0 || nx >= N {
+			continue
+		}
+		if visited[ny][nx] {
+			continue
+		}
+		if wallExists(i, j, d) {
+			continue
+		}
+		fmt.Println(rdluName[d])
+		dfs(ny, nx)
+	}
 }
