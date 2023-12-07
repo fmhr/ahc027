@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime/pprof"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -199,16 +200,44 @@ type State struct {
 	position             Point
 	collectedTrashAmount int
 	fields               [40][40]Cell
-	OUTPUT               string
+	output               [20000]int8
+}
+
+// sync.Pool
+var pool = sync.Pool{
+	New: func() interface{} {
+		return &State{}
+	},
+}
+
+func GetState() *State {
+	return pool.Get().(*State)
+}
+
+func PutState(s *State) {
+	pool.Put(s)
+}
+
+func (s *State) outputToString() string {
+	var buffer bytes.Buffer
+	for i, o := range s.output {
+		if i >= s.turn {
+			break
+		}
+		buffer.WriteString(rdluName[o])
+	}
+	return buffer.String()
 }
 
 func (s *State) Clone() *State {
-	rtn := *s
+	rtn := GetState()
+	rtn.turn = s.turn
 	rtn.position = s.position
 	rtn.collectedTrashAmount = s.collectedTrashAmount
 	rtn.fields = s.fields
-	rtn.OUTPUT = s.OUTPUT
-	return &rtn
+	rtn.output = s.output
+	//log.Printf("rtn=%p s=%p %v\n", &rtn, s, &rtn == s)
+	return rtn
 }
 
 func (s *State) nextState() (rtn *[]*State) {
@@ -229,7 +258,6 @@ func (s *State) move(d int) bool {
 	if !canMove(s.position.y, s.position.x, d) {
 		return false
 	}
-	s.turn++
 	s.position.y += rdluPoint[d].y
 	s.position.x += rdluPoint[d].x
 	s.collectedTrashAmount += dirtiness[s.position.y][s.position.x] * (s.turn - s.fields[s.position.y][s.position.x].lastVistidTime)
@@ -239,7 +267,8 @@ func (s *State) move(d int) bool {
 		s.collectedTrashAmount += 10 * (s.turn - s.fields[s.position.y][s.position.x].lastVistidTime)
 	}
 	s.fields[s.position.y][s.position.x].lastVistidTime = s.turn
-	s.OUTPUT += rdluName[d]
+	s.output[s.turn] = int8(d)
+	s.turn++
 	return true
 }
 
@@ -279,13 +308,13 @@ func (s *State) toGoal() {
 	}
 }
 
+const beamWidth = 10
+const beamDepth = 10000
+
 func beamSearch() {
-	beamWidth := 10
-	beamDepth := 10000
-	nowState := State{position: Point{0, 0}}
+	nowState := State{}
 	states := []*State{&nowState}
-	for beamDepth > 0 {
-		beamDepth--
+	for i := 0; beamDepth > i; i++ {
 		nextStates := []*State{}
 		for _, state := range states {
 			tmpstates := state.nextState()
@@ -295,11 +324,17 @@ func beamSearch() {
 			return nextStates[i].collectedTrashAmount > nextStates[j].collectedTrashAmount
 		})
 		states = make([]*State, 0, beamWidth)
+		for _, state := range states {
+			PutState(state)
+		}
 		states = nextStates[:MinInt(beamWidth, len(nextStates))]
+		for _, state := range nextStates[MinInt(beamWidth, len(nextStates)):] {
+			PutState(state)
+		}
 	}
 	states[0].toGoal()
-	checkOutput(states[0].OUTPUT)
-	fmt.Println(states[0].OUTPUT)
+	checkOutput(states[0].outputToString())
+	fmt.Println(states[0].outputToString())
 }
 
 func MinInt(a, b int) int {
