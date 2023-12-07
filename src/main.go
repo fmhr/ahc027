@@ -248,6 +248,8 @@ func (s *State) nextState() (rtn *[]*State) {
 			if n != nil {
 				*rtn = append(*rtn, n)
 			}
+		} else {
+			PutState(n)
 		}
 	}
 	return
