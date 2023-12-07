@@ -215,6 +215,14 @@ func GetState() *State {
 }
 
 func PutState(s *State) {
+	if s == nil {
+		return
+	}
+	s.turn = 0
+	s.position = Point{0, 0}
+	s.collectedTrashAmount = 0
+	s.fields = [40][40]Cell{}
+	s.output = [20000]int8{}
 	pool.Put(s)
 }
 
@@ -315,23 +323,30 @@ const beamDepth = 10000
 
 func beamSearch() {
 	nowState := State{}
-	states := []*State{&nowState}
+	var states [10]*State
+	states[0] = &nowState
 	for i := 0; beamDepth > i; i++ {
-		nextStates := []*State{}
+		nextStates := make([]*State, 0, beamWidth*4)
 		for _, state := range states {
+			if state == nil {
+				continue
+			}
 			tmpstates := state.nextState()
 			nextStates = append(nextStates, *tmpstates...)
 		}
 		sort.Slice(nextStates, func(i, j int) bool {
 			return nextStates[i].collectedTrashAmount > nextStates[j].collectedTrashAmount
 		})
-		states = make([]*State, 0, beamWidth)
-		for _, state := range states {
+		for i, state := range states {
 			PutState(state)
+			states[i] = nil
 		}
-		states = nextStates[:MinInt(beamWidth, len(nextStates))]
-		for _, state := range nextStates[MinInt(beamWidth, len(nextStates)):] {
-			PutState(state)
+		for i, state := range nextStates {
+			if i < beamWidth {
+				states[i] = state
+			} else {
+				PutState(state)
+			}
 		}
 	}
 	states[0].toGoal()
