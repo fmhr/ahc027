@@ -253,9 +253,7 @@ func (s *State) nextState() (rtn *[]*State) {
 	for i := 0; i < 4; i++ {
 		n := s.Clone()
 		if n.move(i) {
-			if n != nil {
-				*rtn = append(*rtn, n)
-			}
+			*rtn = append(*rtn, n)
 		} else {
 			PutState(n)
 		}
@@ -323,18 +321,22 @@ const beamDepth = 10000
 
 func beamSearch() {
 	nowState := State{}
-	var states [10]*State
+	var states [beamWidth]*State
 	states[0] = &nowState
+	var nextStates [beamWidth * 4]*State
 	for i := 0; beamDepth > i; i++ {
-		nextStates := make([]*State, 0, beamWidth*4)
+		var nindex int
 		for _, state := range states {
 			if state == nil {
 				continue
 			}
 			tmpstates := state.nextState()
-			nextStates = append(nextStates, *tmpstates...)
+			for _, tmpstate := range *tmpstates {
+				nextStates[nindex] = tmpstate
+				nindex++
+			}
 		}
-		sort.Slice(nextStates, func(i, j int) bool {
+		sort.Slice(nextStates[:nindex], func(i, j int) bool {
 			return nextStates[i].collectedTrashAmount > nextStates[j].collectedTrashAmount
 		})
 		for i, state := range states {
@@ -347,6 +349,7 @@ func beamSearch() {
 			} else {
 				PutState(state)
 			}
+			nextStates[i] = nil
 		}
 	}
 	states[0].toGoal()
