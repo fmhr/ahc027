@@ -44,6 +44,7 @@ func main() {
 	beamSearch()
 	duration := time.Since(startTime)
 	log.Printf("time=%vs", duration.Seconds())
+	log.Println("getCount:", getCount, "putCount:", putCount)
 	// メモリ使用量を表示
 	//runtime.ReadMemStats(&m)
 	//log.Printf("Allocations after: %v\n", m.Mallocs)
@@ -191,15 +192,11 @@ func canMove(i, j, d int) bool {
 // beamsearch
 // TODO: あらかじめ、各マスから行動できるマスを計算しておく
 
-type Cell struct {
-	lastVistidTime int
-}
-
 type State struct {
 	turn                 int
 	position             Point
 	collectedTrashAmount int
-	fields               [40][40]Cell
+	lastVistidTime       [40][40]uint16
 	output               [20000]int8
 }
 
@@ -209,19 +206,25 @@ var pool = sync.Pool{
 		return &State{}
 	},
 }
+var getCount int
 
 func GetState() *State {
+	getCount++
 	return pool.Get().(*State)
 }
+
+var putCount int
 
 func PutState(s *State) {
 	if s == nil {
 		return
 	}
+
+	putCount++
 	s.turn = 0
 	s.position = Point{0, 0}
 	s.collectedTrashAmount = 0
-	s.fields = [40][40]Cell{}
+	s.lastVistidTime = [40][40]uint16{}
 	s.output = [20000]int8{}
 	pool.Put(s)
 }
@@ -242,18 +245,18 @@ func (s *State) Clone() *State {
 	rtn.turn = s.turn
 	rtn.position = s.position
 	rtn.collectedTrashAmount = s.collectedTrashAmount
-	rtn.fields = s.fields
+	rtn.lastVistidTime = s.lastVistidTime
 	rtn.output = s.output
 	//log.Printf("rtn=%p s=%p %v\n", &rtn, s, &rtn == s)
 	return rtn
 }
 
-func (s *State) nextState() (rtn *[]*State) {
-	rtn = &[]*State{}
+func (s *State) nextState() (rtn []*State) {
+	rtn = []*State{}
 	for i := 0; i < 4; i++ {
 		n := s.Clone()
 		if n.move(i) {
-			*rtn = append(*rtn, n)
+			rtn = append(rtn, n)
 		} else {
 			PutState(n)
 		}
@@ -268,13 +271,13 @@ func (s *State) move(d int) bool {
 	}
 	s.position.y += rdluPoint[d].y
 	s.position.x += rdluPoint[d].x
-	s.collectedTrashAmount += dirtiness[s.position.y][s.position.x] * (s.turn - s.fields[s.position.y][s.position.x].lastVistidTime)
-	if s.fields[s.position.y][s.position.x].lastVistidTime == 0 {
+	s.collectedTrashAmount += dirtiness[s.position.y][s.position.x] * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
+	if s.lastVistidTime[s.position.y][s.position.x] == 0 {
 		s.collectedTrashAmount += 100 * (s.turn + 1)
 	} else {
-		s.collectedTrashAmount += 10 * (s.turn - s.fields[s.position.y][s.position.x].lastVistidTime)
+		s.collectedTrashAmount += 10 * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
 	}
-	s.fields[s.position.y][s.position.x].lastVistidTime = s.turn
+	s.lastVistidTime[s.position.y][s.position.x] = uint16(s.turn)
 	s.output[s.turn] = int8(d)
 	s.turn++
 	return true
@@ -331,7 +334,7 @@ func beamSearch() {
 				continue
 			}
 			tmpstates := state.nextState()
-			for _, tmpstate := range *tmpstates {
+			for _, tmpstate := range tmpstates {
 				nextStates[nindex] = tmpstate
 				nindex++
 			}
