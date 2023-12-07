@@ -27,3 +27,4 @@ seed.txt
 *.out
 *.gif
 
+cpuprof

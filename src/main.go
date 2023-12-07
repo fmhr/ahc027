@@ -2,33 +2,54 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"log"
-	"runtime"
+	"os"
+	"runtime/pprof"
 	"sort"
 	"time"
 )
 
+// ./bin/main -cpuprofile cpuprof < tools/in/0000.txt
+// go tool pprof -http=localhost:8888 bin/main cpuprof
+var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
+
+//var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
+
 func main() {
 	log.SetFlags(log.Lshortfile)
-	// メモリ使用量を表示
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	fmt.Printf("Allocations before: %v\n", m.Mallocs)
-	//
+	// CPU profile
+	flag.Parse()
+	if *cpuprofile != "" {
+		log.Println("CPU profile enabled")
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal("could not create CPU profile: ", err)
+		}
+		defer f.Close() // error handling omitted for example
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal("could not start CPU profile: ", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+	// メモリ使用量を記録
+	//var m runtime.MemStats
+	//runtime.ReadMemStats(&m)
+	//fmt.Printf("Allocations before: %v\n", m.Mallocs)
+	// 実際の処理
 	startTime := time.Now()
 	readInput()
 	beamSearch()
 	duration := time.Since(startTime)
 	log.Printf("time=%vs", duration.Seconds())
 	// メモリ使用量を表示
-	runtime.ReadMemStats(&m)
-	log.Printf("Allocations after: %v\n", m.Mallocs)
-	log.Printf("TotalAlloc: %v\n", m.TotalAlloc)
-	log.Printf("NumGC: %v\n", m.NumGC)
-	log.Printf("NumForcedGC: %v\n", m.NumForcedGC)
-	log.Printf("MemPauseTotal: %vms\n", float64(m.PauseTotalNs)/1000/1000) // ナノ、マイクロ、ミリ
-	log.Println("end")
+	//runtime.ReadMemStats(&m)
+	//log.Printf("Allocations after: %v\n", m.Mallocs)
+	//log.Printf("TotalAlloc: %v\n", m.TotalAlloc)
+	//log.Printf("NumGC: %v\n", m.NumGC)
+	//log.Printf("NumForcedGC: %v\n", m.NumForcedGC)
+	//log.Printf("MemPauseTotal: %vms\n", float64(m.PauseTotalNs)/1000/1000) // ナノ、マイクロ、ミリ
 }
 
 var N int
@@ -75,9 +96,7 @@ func readInput() {
 			sumDirtiness += dirtiness[i][j]
 		}
 	}
-	log.Printf("N=%v\n", N)
-	log.Printf("dirty=%v\n", sumDirtiness/(N*N))
-	log.Printf("sumdirty=%v\n", sumDirtiness)
+	log.Printf("N=%v dirty=%v sumdirty=%v\n", N, sumDirtiness/(N*N), sumDirtiness)
 	//gridView(dirtiness)
 }
 
