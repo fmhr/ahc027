@@ -317,7 +317,7 @@ func (s *State) toGoal() {
 	}
 }
 
-const beamWidth = 10
+const beamWidth = 40
 const beamDepth = 10000
 
 func beamSearch() {
