@@ -197,7 +197,7 @@ type State struct {
 	position             Point
 	collectedTrashAmount int
 	lastVistidTime       [40][40]uint16
-	output               [20000]int8
+	moveLog              [625]uint64
 }
 
 // sync.Pool
@@ -225,17 +225,15 @@ func PutState(s *State) {
 	s.position = Point{0, 0}
 	s.collectedTrashAmount = 0
 	s.lastVistidTime = [40][40]uint16{}
-	s.output = [20000]int8{}
+	s.moveLog = [625]uint64{}
 	pool.Put(s)
 }
 
 func (s *State) outputToString() string {
 	var buffer bytes.Buffer
-	for i, o := range s.output {
-		if i >= s.turn {
-			break
-		}
-		buffer.WriteString(rdluName[o])
+	for i := 0; i < s.turn; i++ {
+		m := getValue(s.moveLog[:], i)
+		buffer.WriteString(rdluName[m])
 	}
 	return buffer.String()
 }
@@ -246,7 +244,7 @@ func (s *State) Clone() *State {
 	rtn.position = s.position
 	rtn.collectedTrashAmount = s.collectedTrashAmount
 	rtn.lastVistidTime = s.lastVistidTime
-	rtn.output = s.output
+	rtn.moveLog = s.moveLog
 	//log.Printf("rtn=%p s=%p %v\n", &rtn, s, &rtn == s)
 	return rtn
 }
@@ -278,7 +276,7 @@ func (s *State) move(d int) bool {
 		s.collectedTrashAmount += 10 * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
 	}
 	s.lastVistidTime[s.position.y][s.position.x] = uint16(s.turn)
-	s.output[s.turn] = int8(d)
+	setValue(s.moveLog[:], s.turn, uint8(d))
 	s.turn++
 	return true
 }
@@ -393,4 +391,19 @@ func checkOutput(output string) {
 		log.Println("not reached goal")
 		return
 	}
+}
+
+// 特定の位置に値をセットする
+func setValue(array []uint64, position int, value uint8) {
+	index := position / 32
+	bitPosition := position % 32
+	mask := uint64(3) << (bitPosition * 2)
+	array[index] = (array[index] &^ mask) | (uint64(value) << (bitPosition * 2))
+}
+
+// 特定の位置の値を取得する
+func getValue(array []uint64, position int) uint8 {
+	index := position / 32
+	bitPosition := position % 32
+	return uint8((array[index] >> (bitPosition * 2)) & 3)
 }
