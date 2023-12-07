@@ -4,13 +4,31 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"runtime"
 	"sort"
+	"time"
 )
 
 func main() {
 	log.SetFlags(log.Lshortfile)
+	// メモリ使用量を表示
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	fmt.Printf("Allocations before: %v\n", m.Mallocs)
+	//
+	startTime := time.Now()
 	readInput()
 	beamSearch()
+	duration := time.Since(startTime)
+	log.Printf("time=%vs", duration.Seconds())
+	// メモリ使用量を表示
+	runtime.ReadMemStats(&m)
+	log.Printf("Allocations after: %v\n", m.Mallocs)
+	log.Printf("TotalAlloc: %v\n", m.TotalAlloc)
+	log.Printf("NumGC: %v\n", m.NumGC)
+	log.Printf("NumForcedGC: %v\n", m.NumForcedGC)
+	log.Printf("MemPauseTotal: %vms\n", float64(m.PauseTotalNs)/1000/1000) // ナノ、マイクロ、ミリ
+	log.Println("end")
 }
 
 var N int
@@ -47,16 +65,20 @@ func readInput() {
 			}
 		}
 	}
+	sumDirtiness := 0
 	for i := 0; i < N; i++ {
 		for j := 0; j < N; j++ {
 			_, err := fmt.Scan(&dirtiness[i][j])
 			if err != nil {
 				log.Fatal(err)
 			}
+			sumDirtiness += dirtiness[i][j]
 		}
 	}
-
-	gridView(dirtiness)
+	log.Printf("N=%v\n", N)
+	log.Printf("dirty=%v\n", sumDirtiness/(N*N))
+	log.Printf("sumdirty=%v\n", sumDirtiness)
+	//gridView(dirtiness)
 }
 
 func gridView(grid [40][40]int) {
