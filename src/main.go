@@ -40,8 +40,8 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 	// メモリ使用量を記録
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
+	//var m runtime.MemStats
+	//runtime.ReadMemStats(&m)
 	//fmt.Printf("Allocations before: %v\n", m.Mallocs)
 	// 実際の処理 --------------------------------------------------
 	startTime := time.Now()
@@ -49,23 +49,23 @@ func main() {
 	beamSearch()
 	duration := time.Since(startTime)
 	log.Printf("time=%vs", duration.Seconds())
-	log.Println("getCount:", getCount, "putCount:", putCount)
+	//log.Println("getCount:", getCount, "putCount:", putCount)
 	// -----------------------------------------------------------
 	// メモリ使用量を表示
-	runtime.ReadMemStats(&m)
-	log.Printf("Allocations after: %v\n", m.Mallocs)
-	log.Printf("TotalAlloc: %v\n", m.TotalAlloc)
-	log.Printf("NumGC: %v\n", m.NumGC)
-	log.Printf("NumForcedGC: %v\n", m.NumForcedGC)
-	log.Printf("MemPauseTotal: %vms\n", float64(m.PauseTotalNs)/1000/1000) // ナノ、マイクロ、ミリ
+	//runtime.ReadMemStats(&m)
+	//log.Printf("Allocations after: %v\n", m.Mallocs)
+	//log.Printf("TotalAlloc: %v\n", m.TotalAlloc)
+	//log.Printf("NumGC: %v\n", m.NumGC)
+	//log.Printf("NumForcedGC: %v\n", m.NumForcedGC)
+	//log.Printf("MemPauseTotal: %vms\n", float64(m.PauseTotalNs)/1000/1000) // ナノ、マイクロ、ミリ
 	// Allocは現在ヒープに割り当てられているバイト数を返します
-	log.Printf("Alloc = %v MiB", m.Alloc/1024/1024)
+	//log.Printf("Alloc = %v MiB", m.Alloc/1024/1024)
 	// TotalAllocはプログラム開始以来割り当てられた全バイト数を返します
-	log.Printf("TotalAlloc = %v MiB", m.TotalAlloc/1024/1024)
+	//log.Printf("TotalAlloc = %v MiB", m.TotalAlloc/1024/1024)
 	// SysはOSから取得した全バイト数を返します
-	log.Printf("Sys = %v MiB", m.Sys/1024/1024)
+	//log.Printf("Sys = %v MiB", m.Sys/1024/1024)
 	// NumGCはプログラム開始以来のGC実行回数を返します
-	log.Printf("NumGC = %v\n", m.NumGC)
+	//log.Printf("NumGC = %v\n", m.NumGC)
 	// memory profile
 	if *memprofile != "" {
 		f, err := os.Create(*memprofile)
@@ -280,22 +280,15 @@ func (src *State) Copy(dst *State) {
 	dst.turn = src.turn
 	dst.position.y = src.position.y
 	dst.position.x = src.position.x
-	for i := 0; i < 40; i++ {
-		for j := 0; j < 40; j++ {
-			dst.lastVistidTime[i][j] = src.lastVistidTime[i][j]
-		}
-	}
+	dst.lastVistidTime = src.lastVistidTime
 	dst.collectedTrashAmount = src.collectedTrashAmount
-	for i := 0; i < 625; i++ {
-		dst.moveLog[i] = src.moveLog[i]
-	}
-	//dst.lastVistidTime = s.lastVistidTime
-	//	dst.moveLog = s.moveLog
+	dst.moveLog = src.moveLog
 }
 
-func (s *State) nextState(next *[beamWidth * 4]State, nextIndex *int) {
+// func (s *State) nextState(next *[beamWidth * 4]State, nextIndex *int) {
+func (s *State) nextState(next []*State, nextIndex *int) {
 	for i := 0; i < 4; i++ {
-		s.Copy(&next[*nextIndex])
+		s.Copy(next[*nextIndex])
 		if next[*nextIndex].move(i) {
 			next[*nextIndex].flag = true
 			*nextIndex++
@@ -361,9 +354,19 @@ func (s *State) toGoal() {
 const beamWidth = 40
 const beamDepth = 10000
 
+var nowArr, nextArr [beamWidth * 4]State
+
 func beamSearch() {
-	var nowiArr, nextArr [beamWidth * 4]State
-	now, next := &nowiArr, &nextArr
+	nowSlice := make([]*State, beamWidth*4)
+	nextSlice := make([]*State, beamWidth*4)
+	for i := 0; i < beamWidth*4; i++ {
+		nowSlice[i] = &nowArr[i]
+	}
+	for i := 0; i < beamWidth*4; i++ {
+		nextSlice[i] = &nextArr[i]
+	}
+	now, next := nowSlice, nextSlice
+	//	now, next := &nowArr, &nextArr
 	now[0].flag = true // first(0, 0)
 	for i := 0; beamDepth > i; i++ {
 		nextIndex := 0
@@ -375,10 +378,12 @@ func beamSearch() {
 		sort.Slice(next[:nextIndex], func(i, j int) bool {
 			return next[i].collectedTrashAmount > next[j].collectedTrashAmount
 		})
+		//iterativeSort(next, nextIndex-1)
 		if nextIndex == 0 {
 			break
 		}
 		now, next = next, now
+		//log.Println(nextIndex)
 	}
 	// 最後にゴールに向かうのはnext
 	now[0].toGoal()
@@ -434,4 +439,49 @@ func getValue(array []uint64, position int) uint8 {
 	index := position / 32
 	bitPosition := position % 32
 	return uint8((array[index] >> (bitPosition * 2)) & 3)
+}
+
+// quickSortは、指定された範囲のスライスをクイックソートでソートします。
+func quickSort(structs []State, low, high int) {
+	if low < high {
+		// partitioning indexを取得します。
+		pi := partition(structs, low, high)
+
+		// 分割後の要素を個別にソートします。
+		quickSort(structs, low, pi-1)
+		quickSort(structs, pi+1, high)
+	}
+}
+
+// partitionは、ピボットを使ってスライスを分割し、ピボットの正しい位置を返します。
+func partition(structs []State, low, high int) int {
+	pivot := structs[high]
+	i := low - 1
+
+	for j := low; j < high; j++ {
+		// 現在の要素がピボットより小さいか等しい場合
+		if structs[j].collectedTrashAmount >= pivot.collectedTrashAmount {
+			i++ // インクリメントインデックス
+			structs[i], structs[j] = structs[j], structs[i]
+		}
+	}
+	structs[i+1], structs[high] = structs[high], structs[i+1]
+	return i + 1
+}
+
+// iterativeSortはバブルソートを使用して構造体のスライスをソートします。
+func iterativeSort(structs []State, n int) {
+	// nがスライスの長さを超える場合は、スライスの長さに調整します。
+	if n > len(structs) {
+		n = len(structs)
+	}
+
+	for i := 0; i < n-1; i++ {
+		for j := 0; j < n-i-1; j++ {
+			if structs[j].collectedTrashAmount < structs[j+1].collectedTrashAmount {
+				// 隣接する要素を交換します。
+				structs[j], structs[j+1] = structs[j+1], structs[j]
+			}
+		}
+	}
 }
