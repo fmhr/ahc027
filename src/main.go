@@ -219,6 +219,7 @@ func canMove(i, j, d int) bool {
 // TODO: あらかじめ、各マスから行動できるマスを計算しておく
 
 type State struct {
+	flag                 bool
 	turn                 int
 	position             Point
 	collectedTrashAmount int
@@ -245,7 +246,6 @@ func PutState(s *State) {
 	if s == nil {
 		return
 	}
-
 	putCount++
 	s.turn = 0
 	s.position = Point{0, 0}
@@ -275,17 +275,32 @@ func (s *State) Clone() *State {
 	return rtn
 }
 
-func (s *State) nextState() (rtn []*State) {
-	rtn = []*State{}
-	for i := 0; i < 4; i++ {
-		n := s.Clone()
-		if n.move(i) {
-			rtn = append(rtn, n)
-		} else {
-			PutState(n)
+func (src *State) Copy(dst *State) {
+	dst.flag = src.flag
+	dst.turn = src.turn
+	dst.position.y = src.position.y
+	dst.position.x = src.position.x
+	for i := 0; i < 40; i++ {
+		for j := 0; j < 40; j++ {
+			dst.lastVistidTime[i][j] = src.lastVistidTime[i][j]
 		}
 	}
-	return
+	dst.collectedTrashAmount = src.collectedTrashAmount
+	for i := 0; i < 625; i++ {
+		dst.moveLog[i] = src.moveLog[i]
+	}
+	//dst.lastVistidTime = s.lastVistidTime
+	//	dst.moveLog = s.moveLog
+}
+
+func (s *State) nextState(next *[beamWidth * 4]State, nextIndex *int) {
+	for i := 0; i < 4; i++ {
+		s.Copy(&next[*nextIndex])
+		if next[*nextIndex].move(i) {
+			next[*nextIndex].flag = true
+			*nextIndex++
+		}
+	}
 }
 
 // move returns true if the move was successful
@@ -347,41 +362,28 @@ const beamWidth = 40
 const beamDepth = 10000
 
 func beamSearch() {
-	nowState := State{}
-	var states [beamWidth]*State
-	states[0] = &nowState
-	var nextStates [beamWidth * 4]*State
+	var nowiArr, nextArr [beamWidth * 4]State
+	now, next := &nowiArr, &nextArr
+	now[0].flag = true // first(0, 0)
 	for i := 0; beamDepth > i; i++ {
-		var nindex int
-		for _, state := range states {
-			if state == nil {
-				continue
-			}
-			tmpstates := state.nextState()
-			for _, tmpstate := range tmpstates {
-				nextStates[nindex] = tmpstate
-				nindex++
+		nextIndex := 0
+		for j := 0; j < beamWidth; j++ {
+			if now[j].flag && now[j].turn == i {
+				now[j].nextState(next, &nextIndex) // nextに追加
 			}
 		}
-		sort.Slice(nextStates[:nindex], func(i, j int) bool {
-			return nextStates[i].collectedTrashAmount > nextStates[j].collectedTrashAmount
+		sort.Slice(next[:nextIndex], func(i, j int) bool {
+			return next[i].collectedTrashAmount > next[j].collectedTrashAmount
 		})
-		for i, state := range states {
-			PutState(state)
-			states[i] = nil
+		if nextIndex == 0 {
+			break
 		}
-		for i, state := range nextStates {
-			if i < beamWidth {
-				states[i] = state
-			} else {
-				PutState(state)
-			}
-			nextStates[i] = nil
-		}
+		now, next = next, now
 	}
-	states[0].toGoal()
-	checkOutput(states[0].outputToString())
-	fmt.Println(states[0].outputToString())
+	// 最後にゴールに向かうのはnext
+	now[0].toGoal()
+	checkOutput(now[0].outputToString())
+	fmt.Println(now[0].outputToString())
 }
 
 func MinInt(a, b int) int {
