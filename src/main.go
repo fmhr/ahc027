@@ -179,15 +179,6 @@ const (
 var rdluPoint = []Point{{0, 1}, {1, 0}, {0, -1}, {-1, 0}}
 var rdluName = []string{"R", "D", "L", "U"} // +2%4 で反対向き
 
-func rdluNameToDirection(name string) int {
-	for i, n := range rdluName {
-		if n == name {
-			return i
-		}
-	}
-	panic("invalid name")
-}
-
 // wallExists check if there is a wall in the direction d from (i, j)
 func wallExists(i, j, d int) bool {
 	switch d {
@@ -224,8 +215,7 @@ type State struct {
 	position             Point
 	collectedTrashAmount int
 	lastVistidTime       [40][40]uint16
-	//	moveLog              [625]uint64
-	nodeAddress *Node
+	nodeAddress          *Node
 }
 
 // sync.Pool
@@ -251,18 +241,8 @@ func PutState(s *State) {
 	s.position = Point{0, 0}
 	s.collectedTrashAmount = 0
 	s.lastVistidTime = [40][40]uint16{}
-	//	s.moveLog = [625]uint64{}
 	pool.Put(s)
 }
-
-//func (s *State) outputToString() string {
-//var buffer bytes.Buffer
-//for i := 0; i < s.turn; i++ {
-//		m := getValue(s.moveLog[:], i)
-//	buffer.WriteString(rdluName[m])
-//}
-//return buffer.String()
-//}
 
 func (s *State) outputToStringForTree() string {
 	var buffer bytes.Buffer
@@ -284,7 +264,6 @@ func (s *State) Clone() *State {
 	rtn.position = s.position
 	rtn.collectedTrashAmount = s.collectedTrashAmount
 	rtn.lastVistidTime = s.lastVistidTime
-	//rtn.moveLog = s.moveLog
 	rtn.nodeAddress = s.nodeAddress
 	//log.Printf("rtn=%p s=%p %v\n", &rtn, s, &rtn == s)
 	return rtn
@@ -297,7 +276,6 @@ func (src *State) Copy(dst *State) {
 	dst.position.x = src.position.x
 	dst.lastVistidTime = src.lastVistidTime
 	dst.collectedTrashAmount = src.collectedTrashAmount
-	//dst.moveLog = src.moveLog
 	dst.nodeAddress = src.nodeAddress
 }
 
@@ -333,7 +311,6 @@ func (s *State) move(d int) bool {
 		s.collectedTrashAmount += 10 * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
 	}
 	s.lastVistidTime[s.position.y][s.position.x] = uint16(s.turn)
-	//setValue(s.moveLog[:], s.turn, uint8(d))
 	s.turn++
 	return true
 }
@@ -406,13 +383,10 @@ func beamSearch() {
 		sort.Slice(next[:nextIndex], func(i, j int) bool {
 			return next[i].collectedTrashAmount > next[j].collectedTrashAmount
 		})
-		//iterativeSort(next, nextIndex-1)
 		if nextIndex == 0 {
 			break
 		}
 		now, next = next, now
-		// clean next
-		//log.Println(nextIndex)
 	}
 	// 最後にゴールに向かうのはnext
 	rtn := now[0].toGoal()
@@ -429,49 +403,6 @@ func MinInt(a, b int) int {
 		return a
 	}
 	return b
-}
-
-func checkOutput(output string) {
-	state := State{position: Point{0, 0}}
-	var reached [40][40]bool
-	for _, o := range output {
-		rtn := state.move(rdluNameToDirection(string(o)))
-		if !rtn {
-			log.Println("invalid output")
-		}
-		reached[state.position.y][state.position.x] = true
-	}
-
-	noReaches := make([]Point, 0, N*N)
-	for i := 0; i < N; i++ {
-		//	log.Println(reached[i][:N])
-		for j := 0; j < N; j++ {
-			if !reached[i][j] {
-				noReaches = append(noReaches, Point{i, j})
-			}
-		}
-	}
-	log.Println("noReaches:", len(noReaches), "/", N*N, noReaches)
-
-	if state.position.y != 0 || state.position.x != 0 {
-		log.Println("not reached goal")
-		return
-	}
-}
-
-// 特定の位置に値をセットする
-func setValue(array []uint64, position int, value uint8) {
-	index := position / 32
-	bitPosition := position % 32
-	mask := uint64(3) << (bitPosition * 2)
-	array[index] = (array[index] &^ mask) | (uint64(value) << (bitPosition * 2))
-}
-
-// 特定の位置の値を取得する
-func getValue(array []uint64, position int) uint8 {
-	index := position / 32
-	bitPosition := position % 32
-	return uint8((array[index] >> (bitPosition * 2)) & 3)
 }
 
 // 行動履歴を探索木を作って、コピーコストを減らす
