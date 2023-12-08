@@ -516,3 +516,8 @@ func (t *Tree) Release(node *Node) {
 	}
 	t.pool.Put(node)
 }
+
+//Error seeds: []
+//avarageTime=0.30  maxTime=0.31
+//(Score)sum=477,862,241.00 avarage=9,557,244.82 log=19.984833
+//477862241.00
