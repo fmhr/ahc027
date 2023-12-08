@@ -224,7 +224,8 @@ type State struct {
 	position             Point
 	collectedTrashAmount int
 	lastVistidTime       [40][40]uint16
-	moveLog              [625]uint64
+	//	moveLog              [625]uint64
+	nodeAddress *Node
 }
 
 // sync.Pool
@@ -250,17 +251,31 @@ func PutState(s *State) {
 	s.position = Point{0, 0}
 	s.collectedTrashAmount = 0
 	s.lastVistidTime = [40][40]uint16{}
-	s.moveLog = [625]uint64{}
+	//	s.moveLog = [625]uint64{}
 	pool.Put(s)
 }
 
-func (s *State) outputToString() string {
+//func (s *State) outputToString() string {
+//var buffer bytes.Buffer
+//for i := 0; i < s.turn; i++ {
+//		m := getValue(s.moveLog[:], i)
+//	buffer.WriteString(rdluName[m])
+//}
+//return buffer.String()
+//}
+
+func (s *State) outputToStringForTree() string {
 	var buffer bytes.Buffer
-	for i := 0; i < s.turn; i++ {
-		m := getValue(s.moveLog[:], i)
-		buffer.WriteString(rdluName[m])
+	node := s.nodeAddress
+	for node.Parent != nil {
+		buffer.WriteString(rdluName[node.Move])
+		node = node.Parent
 	}
-	return buffer.String()
+	bytes := buffer.Bytes()
+	for i, j := 0, len(bytes)-1; i < j; i, j = i+1, j-1 {
+		bytes[i], bytes[j] = bytes[j], bytes[i]
+	}
+	return string(bytes)
 }
 
 func (s *State) Clone() *State {
@@ -269,7 +284,8 @@ func (s *State) Clone() *State {
 	rtn.position = s.position
 	rtn.collectedTrashAmount = s.collectedTrashAmount
 	rtn.lastVistidTime = s.lastVistidTime
-	rtn.moveLog = s.moveLog
+	//rtn.moveLog = s.moveLog
+	rtn.nodeAddress = s.nodeAddress
 	//log.Printf("rtn=%p s=%p %v\n", &rtn, s, &rtn == s)
 	return rtn
 }
@@ -281,15 +297,20 @@ func (src *State) Copy(dst *State) {
 	dst.position.x = src.position.x
 	dst.lastVistidTime = src.lastVistidTime
 	dst.collectedTrashAmount = src.collectedTrashAmount
-	dst.moveLog = src.moveLog
+	//dst.moveLog = src.moveLog
+	dst.nodeAddress = src.nodeAddress
 }
 
 // func (s *State) nextState(next *[beamWidth * 4]State, nextIndex *int) {
-func (s *State) nextState(next []*State, nextIndex *int) {
+func (s *State) nextState(next []*State, nextIndex *int, tree *Tree) {
 	for i := 0; i < 4; i++ {
 		s.Copy(next[*nextIndex])
 		if next[*nextIndex].move(i) {
 			next[*nextIndex].flag = true
+			// tree update
+			p := s.nodeAddress
+			c := tree.AddChild(p, uint8(i))
+			next[*nextIndex].nodeAddress = c
 			*nextIndex++
 		}
 	}
@@ -312,13 +333,14 @@ func (s *State) move(d int) bool {
 		s.collectedTrashAmount += 10 * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
 	}
 	s.lastVistidTime[s.position.y][s.position.x] = uint16(s.turn)
-	setValue(s.moveLog[:], s.turn, uint8(d))
+	//setValue(s.moveLog[:], s.turn, uint8(d))
 	s.turn++
 	return true
 }
 
 // Goal (0,0)
-func (s *State) toGoal() {
+func (s *State) toGoal() string {
+	var buffer bytes.Buffer
 	// goalからの距離を計算
 	// 現在地からgoalを目指す
 	var distance [40][40]int
@@ -346,11 +368,13 @@ func (s *State) toGoal() {
 				next := Point{s.position.y + rdluPoint[i].y, s.position.x + rdluPoint[i].x}
 				if distance[next.y][next.x] < distance[s.position.y][s.position.x] {
 					s.move(i)
+					buffer.WriteString(rdluName[i])
 					break
 				}
 			}
 		}
 	}
+	return buffer.String()
 }
 
 const beamWidth = 40
@@ -359,6 +383,7 @@ const beamDepth = 10000
 var nowArr, nextArr [beamWidth * 4]State
 
 func beamSearch() {
+	tree := NewTree()
 	nowSlice := make([]*State, beamWidth*4)
 	nextSlice := make([]*State, beamWidth*4)
 	for i := 0; i < beamWidth*4; i++ {
@@ -370,11 +395,12 @@ func beamSearch() {
 	now, next := nowSlice, nextSlice
 	//	now, next := &nowArr, &nextArr
 	now[0].flag = true // first(0, 0)
+	now[0].nodeAddress = tree.NewNode(nil, 0)
 	for i := 0; beamDepth > i; i++ {
 		nextIndex := 0
 		for j := 0; j < beamWidth; j++ {
 			if now[j].flag && now[j].turn == i {
-				now[j].nextState(next, &nextIndex) // nextに追加
+				now[j].nextState(next, &nextIndex, tree) // nextに追加
 			}
 		}
 		sort.Slice(next[:nextIndex], func(i, j int) bool {
@@ -385,12 +411,17 @@ func beamSearch() {
 			break
 		}
 		now, next = next, now
+		// clean next
 		//log.Println(nextIndex)
 	}
 	// 最後にゴールに向かうのはnext
-	now[0].toGoal()
-	checkOutput(now[0].outputToString())
-	fmt.Println(now[0].outputToString())
+	rtn := now[0].toGoal()
+	//checkOutput(now[0].outputToString())
+	//fmt.Println(now[0].outputToString())
+	//log.Println(len(now[0].outputToStringForTree()), len(now[0].outputToString()))
+	//log.Println(len(rtn), rtn)
+	ans := now[0].outputToStringForTree() + rtn
+	fmt.Println(ans)
 }
 
 func MinInt(a, b int) int {
@@ -441,4 +472,47 @@ func getValue(array []uint64, position int) uint8 {
 	index := position / 32
 	bitPosition := position % 32
 	return uint8((array[index] >> (bitPosition * 2)) & 3)
+}
+
+// 行動履歴を探索木を作って、コピーコストを減らす
+type Node struct {
+	Parent   *Node
+	Children [4]*Node // RDLU毎に子ノードを持つ
+	Move     uint8
+}
+
+type Tree struct {
+	Root *Node
+	pool sync.Pool
+}
+
+func NewTree() *Tree {
+	return &Tree{
+		pool: sync.Pool{
+			New: func() interface{} {
+				return &Node{}
+			},
+		},
+	}
+}
+
+func (t *Tree) NewNode(parent *Node, move uint8) *Node {
+	node := t.pool.Get().(*Node)
+	node.Parent = parent
+	node.Move = move
+	return node
+}
+
+func (t *Tree) AddChild(parent *Node, move uint8) *Node {
+	child := t.NewNode(parent, move)
+	parent.Children[move] = child
+	return child
+}
+
+func (t *Tree) Release(node *Node) {
+	node.Parent = nil
+	for i := 0; i < 4; i++ {
+		node.Children[i] = nil
+	}
+	t.pool.Put(node)
 }
