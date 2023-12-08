@@ -6,20 +6,25 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"sort"
 	"sync"
 	"time"
 )
 
-// ./bin/main -cpuprofile cpuprof < tools/in/0000.txt
-// go tool pprof -http=localhost:8888 bin/main cpuprof
+// ./bin/a.out -cpuprofile cpu.prof < tools/in/0000.txt
+// ./bin/a.out -cpuprofile cpu.prof -memprofile mem.prof < tools/in/0000.txt
+// go tool pprof -http=localhost:8888 bin/a.out cpu.prof
+// go tool pprof -http=localhost:8888 bin/a.out mem.prof
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
-
-//var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
+var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
 
 func main() {
 	log.SetFlags(log.Lshortfile)
+	// GCの閾値を高く設定して、GCの実行頻度を減らす
+	debug.SetGCPercent(2000)
 	// CPU profile
 	flag.Parse()
 	if *cpuprofile != "" {
@@ -35,23 +40,44 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 	// メモリ使用量を記録
-	//var m runtime.MemStats
-	//runtime.ReadMemStats(&m)
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
 	//fmt.Printf("Allocations before: %v\n", m.Mallocs)
-	// 実際の処理
+	// 実際の処理 --------------------------------------------------
 	startTime := time.Now()
 	readInput()
 	beamSearch()
 	duration := time.Since(startTime)
 	log.Printf("time=%vs", duration.Seconds())
 	log.Println("getCount:", getCount, "putCount:", putCount)
+	// -----------------------------------------------------------
 	// メモリ使用量を表示
-	//runtime.ReadMemStats(&m)
-	//log.Printf("Allocations after: %v\n", m.Mallocs)
-	//log.Printf("TotalAlloc: %v\n", m.TotalAlloc)
-	//log.Printf("NumGC: %v\n", m.NumGC)
-	//log.Printf("NumForcedGC: %v\n", m.NumForcedGC)
-	//log.Printf("MemPauseTotal: %vms\n", float64(m.PauseTotalNs)/1000/1000) // ナノ、マイクロ、ミリ
+	runtime.ReadMemStats(&m)
+	log.Printf("Allocations after: %v\n", m.Mallocs)
+	log.Printf("TotalAlloc: %v\n", m.TotalAlloc)
+	log.Printf("NumGC: %v\n", m.NumGC)
+	log.Printf("NumForcedGC: %v\n", m.NumForcedGC)
+	log.Printf("MemPauseTotal: %vms\n", float64(m.PauseTotalNs)/1000/1000) // ナノ、マイクロ、ミリ
+	// Allocは現在ヒープに割り当てられているバイト数を返します
+	log.Printf("Alloc = %v MiB", m.Alloc/1024/1024)
+	// TotalAllocはプログラム開始以来割り当てられた全バイト数を返します
+	log.Printf("TotalAlloc = %v MiB", m.TotalAlloc/1024/1024)
+	// SysはOSから取得した全バイト数を返します
+	log.Printf("Sys = %v MiB", m.Sys/1024/1024)
+	// NumGCはプログラム開始以来のGC実行回数を返します
+	log.Printf("NumGC = %v\n", m.NumGC)
+	// memory profile
+	if *memprofile != "" {
+		f, err := os.Create(*memprofile)
+		if err != nil {
+			log.Fatal("could not create memory profile: ", err)
+		}
+		defer f.Close() // error handling omitted for example
+		runtime.GC()    // get up-to-date statistics
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			log.Fatal("could not write memory profile: ", err)
+		}
+	}
 }
 
 var N int
