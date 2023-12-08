@@ -234,13 +234,12 @@ var pool = sync.Pool{
 	},
 }
 var getCount int
+var putCount int
 
 func GetState() *State {
 	getCount++
 	return pool.Get().(*State)
 }
-
-var putCount int
 
 func PutState(s *State) {
 	if s == nil {
@@ -303,10 +302,13 @@ func (s *State) move(d int) bool {
 	}
 	s.position.y += rdluPoint[d].y
 	s.position.x += rdluPoint[d].x
+	// 汚れの総和
 	s.collectedTrashAmount += dirtiness[s.position.y][s.position.x] * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
 	if s.lastVistidTime[s.position.y][s.position.x] == 0 {
+		// 初めて訪れるマスにボーナス
 		s.collectedTrashAmount += 100 * (s.turn + 1)
 	} else {
+		// 久しぶりに訪れるマスにボーナス
 		s.collectedTrashAmount += 10 * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
 	}
 	s.lastVistidTime[s.position.y][s.position.x] = uint16(s.turn)
@@ -439,49 +441,4 @@ func getValue(array []uint64, position int) uint8 {
 	index := position / 32
 	bitPosition := position % 32
 	return uint8((array[index] >> (bitPosition * 2)) & 3)
-}
-
-// quickSortは、指定された範囲のスライスをクイックソートでソートします。
-func quickSort(structs []State, low, high int) {
-	if low < high {
-		// partitioning indexを取得します。
-		pi := partition(structs, low, high)
-
-		// 分割後の要素を個別にソートします。
-		quickSort(structs, low, pi-1)
-		quickSort(structs, pi+1, high)
-	}
-}
-
-// partitionは、ピボットを使ってスライスを分割し、ピボットの正しい位置を返します。
-func partition(structs []State, low, high int) int {
-	pivot := structs[high]
-	i := low - 1
-
-	for j := low; j < high; j++ {
-		// 現在の要素がピボットより小さいか等しい場合
-		if structs[j].collectedTrashAmount >= pivot.collectedTrashAmount {
-			i++ // インクリメントインデックス
-			structs[i], structs[j] = structs[j], structs[i]
-		}
-	}
-	structs[i+1], structs[high] = structs[high], structs[i+1]
-	return i + 1
-}
-
-// iterativeSortはバブルソートを使用して構造体のスライスをソートします。
-func iterativeSort(structs []State, n int) {
-	// nがスライスの長さを超える場合は、スライスの長さに調整します。
-	if n > len(structs) {
-		n = len(structs)
-	}
-
-	for i := 0; i < n-1; i++ {
-		for j := 0; j < n-i-1; j++ {
-			if structs[j].collectedTrashAmount < structs[j+1].collectedTrashAmount {
-				// 隣接する要素を交換します。
-				structs[j], structs[j+1] = structs[j+1], structs[j]
-			}
-		}
-	}
 }
