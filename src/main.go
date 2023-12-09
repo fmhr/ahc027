@@ -394,7 +394,7 @@ func beamSearch() {
 			if n == nil || n == tree.Root {
 				continue
 			}
-			if n.Children[0] == nil && n.Children[1] == nil && n.Children[2] == nil && n.Children[3] == nil {
+			if n.zeroChildren() {
 				tree.Release(n)
 			}
 			now[j].nodeAddress = nil
@@ -431,6 +431,10 @@ type Node struct {
 	Parent   *Node
 	Children [4]*Node // RDLU毎に子ノードを持つ
 	Move     uint8
+}
+
+func (n *Node) zeroChildren() bool {
+	return n.Children[0] == nil && n.Children[1] == nil && n.Children[2] == nil && n.Children[3] == nil
 }
 
 type Tree struct {
