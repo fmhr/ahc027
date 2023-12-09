@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"runtime"
-	"runtime/debug"
 	"runtime/pprof"
 	"sort"
 	"sync"
@@ -24,7 +23,7 @@ var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
 func main() {
 	log.SetFlags(log.Lshortfile)
 	// GCの閾値を高く設定して、GCの実行頻度を減らす
-	debug.SetGCPercent(2000)
+	//debug.SetGCPercent(2000)
 	// CPU profile
 	flag.Parse()
 	if *cpuprofile != "" {
@@ -40,7 +39,7 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 	// メモリ使用量を記録
-	//var m runtime.MemStats
+	var m runtime.MemStats
 	//runtime.ReadMemStats(&m)
 	//fmt.Printf("Allocations before: %v\n", m.Mallocs)
 	// 実際の処理 --------------------------------------------------
@@ -52,7 +51,7 @@ func main() {
 	//log.Println("getCount:", getCount, "putCount:", putCount)
 	// -----------------------------------------------------------
 	// メモリ使用量を表示
-	//runtime.ReadMemStats(&m)
+	runtime.ReadMemStats(&m)
 	//log.Printf("Allocations after: %v\n", m.Mallocs)
 	//log.Printf("TotalAlloc: %v\n", m.TotalAlloc)
 	//log.Printf("NumGC: %v\n", m.NumGC)
@@ -63,7 +62,7 @@ func main() {
 	// TotalAllocはプログラム開始以来割り当てられた全バイト数を返します
 	//log.Printf("TotalAlloc = %v MiB", m.TotalAlloc/1024/1024)
 	// SysはOSから取得した全バイト数を返します
-	//log.Printf("Sys = %v MiB", m.Sys/1024/1024)
+	log.Printf("Sys=%v MiB", m.Sys/1024/1024)
 	// NumGCはプログラム開始以来のGC実行回数を返します
 	//log.Printf("NumGC = %v\n", m.NumGC)
 	// memory profile
@@ -83,7 +82,7 @@ func main() {
 var N int
 var hWall [40][40]bool
 var vWall [40][40]bool
-var dirtiness [40][40]int
+var dirtiness [40][40]uint16
 
 func readInput() {
 	_, err := fmt.Scan(&N)
@@ -121,7 +120,7 @@ func readInput() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			sumDirtiness += dirtiness[i][j]
+			sumDirtiness += int(dirtiness[i][j])
 		}
 	}
 	log.Printf("N=%v dirty=%v sumdirty=%v\n", N, sumDirtiness/(N*N), sumDirtiness)
@@ -281,17 +280,23 @@ func (src *State) Copy(dst *State) {
 
 // func (s *State) nextState(next *[beamWidth * 4]State, nextIndex *int) {
 func (s *State) nextState(next []*State, nextIndex *int, tree *Tree) {
+	var cnt int = 0
 	for i := 0; i < 4; i++ {
 		s.Copy(next[*nextIndex])
 		if next[*nextIndex].move(i) {
 			next[*nextIndex].flag = true
 			// tree update
 			p := s.nodeAddress
-			c := tree.AddChild(p, uint8(i))
+			c := tree.AddChild(p, uint8(i), s.turn)
 			next[*nextIndex].nodeAddress = c
 			*nextIndex++
+			cnt++
 		}
 	}
+	// 四方塞がれているマスには到達しないので、ここは未達
+	//if cnt == 0 {
+	//tree.Release(s.nodeAddress)
+	//}
 }
 
 // move returns true if the move was successful
@@ -302,7 +307,7 @@ func (s *State) move(d int) bool {
 	s.position.y += rdluPoint[d].y
 	s.position.x += rdluPoint[d].x
 	// 汚れの総和
-	s.collectedTrashAmount += dirtiness[s.position.y][s.position.x] * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
+	s.collectedTrashAmount += int(dirtiness[s.position.y][s.position.x]) * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
 	if s.lastVistidTime[s.position.y][s.position.x] == 0 {
 		// 初めて訪れるマスにボーナス
 		s.collectedTrashAmount += 100 * (s.turn + 1)
@@ -361,6 +366,7 @@ var nowArr, nextArr [beamWidth * 4]State
 
 func beamSearch() {
 	tree := NewTree()
+	tree.Root = tree.NewNode(nil, 0, 0)
 	nowSlice := make([]*State, beamWidth*4)
 	nextSlice := make([]*State, beamWidth*4)
 	for i := 0; i < beamWidth*4; i++ {
@@ -372,7 +378,7 @@ func beamSearch() {
 	now, next := nowSlice, nextSlice
 	//	now, next := &nowArr, &nextArr
 	now[0].flag = true // first(0, 0)
-	now[0].nodeAddress = tree.NewNode(nil, 0)
+	now[0].nodeAddress = tree.Root
 	for i := 0; beamDepth > i; i++ {
 		nextIndex := 0
 		for j := 0; j < beamWidth; j++ {
@@ -383,6 +389,16 @@ func beamSearch() {
 		sort.Slice(next[:nextIndex], func(i, j int) bool {
 			return next[i].collectedTrashAmount > next[j].collectedTrashAmount
 		})
+		for j := 0; j < beamWidth*4; j++ {
+			n := now[j].nodeAddress
+			if n == nil || n == tree.Root {
+				continue
+			}
+			if n.Children[0] == nil && n.Children[1] == nil && n.Children[2] == nil && n.Children[3] == nil {
+				tree.Release(n)
+			}
+			now[j].nodeAddress = nil
+		}
 		if nextIndex == 0 {
 			break
 		}
@@ -396,6 +412,11 @@ func beamSearch() {
 	//log.Println(len(rtn), rtn)
 	ans := now[0].outputToStringForTree() + rtn
 	fmt.Println(ans)
+	//log.Println(time.Now())
+	//log.Println(tree.Root)
+	//tree.TraverseFromChildren(tree.Root)
+	//log.Println(cnt)
+	//log.Println(time.Now())
 }
 
 func MinInt(a, b int) int {
@@ -427,25 +448,51 @@ func NewTree() *Tree {
 	}
 }
 
-func (t *Tree) NewNode(parent *Node, move uint8) *Node {
+func (t *Tree) NewNode(parent *Node, move uint8, turn int) *Node {
 	node := t.pool.Get().(*Node)
 	node.Parent = parent
 	node.Move = move
 	return node
 }
 
-func (t *Tree) AddChild(parent *Node, move uint8) *Node {
-	child := t.NewNode(parent, move)
+func (t *Tree) AddChild(parent *Node, move uint8, turn int) *Node {
+	child := t.NewNode(parent, move, turn)
 	parent.Children[move] = child
 	return child
 }
 
 func (t *Tree) Release(node *Node) {
+	node.Parent.Children[node.Move] = nil
+	//if node.Parent.Children[0] == nil && node.Parent.Children[1] == nil && node.Parent.Children[2] == nil && node.Parent.Children[3] == nil {
+	//if node.Parent.Parent != nil {
+	//t.Release(node.Parent)
+	//}
+	//}
+	// reset
 	node.Parent = nil
+	node.Move = 0
 	for i := 0; i < 4; i++ {
 		node.Children[i] = nil
 	}
 	t.pool.Put(node)
+}
+
+var cnt int
+
+func (t *Tree) TraverseFromChildren(node *Node) {
+	if node == nil {
+		return
+	}
+
+	for _, child := range node.Children {
+		t.TraverseFromChildren(child)
+	}
+	// ここで処理
+	//if node.Children[0] == nil && node.Children[1] == nil && node.Children[2] == nil && node.Children[3] == nil {
+	//t.Release(node)
+	//}
+	//log.Println(node)
+	cnt++
 }
 
 //Error seeds: []
