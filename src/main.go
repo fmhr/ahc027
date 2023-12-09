@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"runtime"
-	"runtime/debug"
 	"runtime/pprof"
 	"sort"
 	"sync"
@@ -24,7 +23,7 @@ var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
 func main() {
 	log.SetFlags(log.Lshortfile)
 	// GCの閾値を高く設定して、GCの実行頻度を減らす
-	debug.SetGCPercent(2000)
+	//debug.SetGCPercent(2000)
 	// CPU profile
 	flag.Parse()
 	if *cpuprofile != "" {
@@ -40,7 +39,7 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 	// メモリ使用量を記録
-	//var m runtime.MemStats
+	var m runtime.MemStats
 	//runtime.ReadMemStats(&m)
 	//fmt.Printf("Allocations before: %v\n", m.Mallocs)
 	// 実際の処理 --------------------------------------------------
@@ -52,7 +51,7 @@ func main() {
 	//log.Println("getCount:", getCount, "putCount:", putCount)
 	// -----------------------------------------------------------
 	// メモリ使用量を表示
-	//runtime.ReadMemStats(&m)
+	runtime.ReadMemStats(&m)
 	//log.Printf("Allocations after: %v\n", m.Mallocs)
 	//log.Printf("TotalAlloc: %v\n", m.TotalAlloc)
 	//log.Printf("NumGC: %v\n", m.NumGC)
@@ -63,7 +62,7 @@ func main() {
 	// TotalAllocはプログラム開始以来割り当てられた全バイト数を返します
 	//log.Printf("TotalAlloc = %v MiB", m.TotalAlloc/1024/1024)
 	// SysはOSから取得した全バイト数を返します
-	//log.Printf("Sys = %v MiB", m.Sys/1024/1024)
+	log.Printf("Sys=%v MiB", m.Sys/1024/1024)
 	// NumGCはプログラム開始以来のGC実行回数を返します
 	//log.Printf("NumGC = %v\n", m.NumGC)
 	// memory profile
@@ -83,7 +82,7 @@ func main() {
 var N int
 var hWall [40][40]bool
 var vWall [40][40]bool
-var dirtiness [40][40]int
+var dirtiness [40][40]uint16
 
 func readInput() {
 	_, err := fmt.Scan(&N)
@@ -121,7 +120,7 @@ func readInput() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			sumDirtiness += dirtiness[i][j]
+			sumDirtiness += int(dirtiness[i][j])
 		}
 	}
 	log.Printf("N=%v dirty=%v sumdirty=%v\n", N, sumDirtiness/(N*N), sumDirtiness)
@@ -179,15 +178,6 @@ const (
 var rdluPoint = []Point{{0, 1}, {1, 0}, {0, -1}, {-1, 0}}
 var rdluName = []string{"R", "D", "L", "U"} // +2%4 で反対向き
 
-func rdluNameToDirection(name string) int {
-	for i, n := range rdluName {
-		if n == name {
-			return i
-		}
-	}
-	panic("invalid name")
-}
-
 // wallExists check if there is a wall in the direction d from (i, j)
 func wallExists(i, j, d int) bool {
 	switch d {
@@ -224,7 +214,7 @@ type State struct {
 	position             Point
 	collectedTrashAmount int
 	lastVistidTime       [40][40]uint16
-	moveLog              [625]uint64
+	nodeAddress          *Node
 }
 
 // sync.Pool
@@ -250,17 +240,21 @@ func PutState(s *State) {
 	s.position = Point{0, 0}
 	s.collectedTrashAmount = 0
 	s.lastVistidTime = [40][40]uint16{}
-	s.moveLog = [625]uint64{}
 	pool.Put(s)
 }
 
-func (s *State) outputToString() string {
+func (s *State) outputToStringForTree() string {
 	var buffer bytes.Buffer
-	for i := 0; i < s.turn; i++ {
-		m := getValue(s.moveLog[:], i)
-		buffer.WriteString(rdluName[m])
+	node := s.nodeAddress
+	for node.Parent != nil {
+		buffer.WriteString(rdluName[node.Move])
+		node = node.Parent
 	}
-	return buffer.String()
+	bytes := buffer.Bytes()
+	for i, j := 0, len(bytes)-1; i < j; i, j = i+1, j-1 {
+		bytes[i], bytes[j] = bytes[j], bytes[i]
+	}
+	return string(bytes)
 }
 
 func (s *State) Clone() *State {
@@ -269,7 +263,7 @@ func (s *State) Clone() *State {
 	rtn.position = s.position
 	rtn.collectedTrashAmount = s.collectedTrashAmount
 	rtn.lastVistidTime = s.lastVistidTime
-	rtn.moveLog = s.moveLog
+	rtn.nodeAddress = s.nodeAddress
 	//log.Printf("rtn=%p s=%p %v\n", &rtn, s, &rtn == s)
 	return rtn
 }
@@ -281,18 +275,28 @@ func (src *State) Copy(dst *State) {
 	dst.position.x = src.position.x
 	dst.lastVistidTime = src.lastVistidTime
 	dst.collectedTrashAmount = src.collectedTrashAmount
-	dst.moveLog = src.moveLog
+	dst.nodeAddress = src.nodeAddress
 }
 
 // func (s *State) nextState(next *[beamWidth * 4]State, nextIndex *int) {
-func (s *State) nextState(next []*State, nextIndex *int) {
+func (s *State) nextState(next []*State, nextIndex *int, tree *Tree) {
+	var cnt int = 0
 	for i := 0; i < 4; i++ {
 		s.Copy(next[*nextIndex])
 		if next[*nextIndex].move(i) {
 			next[*nextIndex].flag = true
+			// tree update
+			p := s.nodeAddress
+			c := tree.AddChild(p, uint8(i), s.turn)
+			next[*nextIndex].nodeAddress = c
 			*nextIndex++
+			cnt++
 		}
 	}
+	// 四方塞がれているマスには到達しないので、ここは未達
+	//if cnt == 0 {
+	//tree.Release(s.nodeAddress)
+	//}
 }
 
 // move returns true if the move was successful
@@ -303,7 +307,7 @@ func (s *State) move(d int) bool {
 	s.position.y += rdluPoint[d].y
 	s.position.x += rdluPoint[d].x
 	// 汚れの総和
-	s.collectedTrashAmount += dirtiness[s.position.y][s.position.x] * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
+	s.collectedTrashAmount += int(dirtiness[s.position.y][s.position.x]) * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
 	if s.lastVistidTime[s.position.y][s.position.x] == 0 {
 		// 初めて訪れるマスにボーナス
 		s.collectedTrashAmount += 100 * (s.turn + 1)
@@ -312,13 +316,13 @@ func (s *State) move(d int) bool {
 		s.collectedTrashAmount += 10 * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
 	}
 	s.lastVistidTime[s.position.y][s.position.x] = uint16(s.turn)
-	setValue(s.moveLog[:], s.turn, uint8(d))
 	s.turn++
 	return true
 }
 
 // Goal (0,0)
-func (s *State) toGoal() {
+func (s *State) toGoal() string {
+	var buffer bytes.Buffer
 	// goalからの距離を計算
 	// 現在地からgoalを目指す
 	var distance [40][40]int
@@ -346,11 +350,13 @@ func (s *State) toGoal() {
 				next := Point{s.position.y + rdluPoint[i].y, s.position.x + rdluPoint[i].x}
 				if distance[next.y][next.x] < distance[s.position.y][s.position.x] {
 					s.move(i)
+					buffer.WriteString(rdluName[i])
 					break
 				}
 			}
 		}
 	}
+	return buffer.String()
 }
 
 const beamWidth = 40
@@ -359,6 +365,8 @@ const beamDepth = 10000
 var nowArr, nextArr [beamWidth * 4]State
 
 func beamSearch() {
+	tree := NewTree()
+	tree.Root = tree.NewNode(nil, 0, 0)
 	nowSlice := make([]*State, beamWidth*4)
 	nextSlice := make([]*State, beamWidth*4)
 	for i := 0; i < beamWidth*4; i++ {
@@ -370,27 +378,45 @@ func beamSearch() {
 	now, next := nowSlice, nextSlice
 	//	now, next := &nowArr, &nextArr
 	now[0].flag = true // first(0, 0)
+	now[0].nodeAddress = tree.Root
 	for i := 0; beamDepth > i; i++ {
 		nextIndex := 0
 		for j := 0; j < beamWidth; j++ {
 			if now[j].flag && now[j].turn == i {
-				now[j].nextState(next, &nextIndex) // nextに追加
+				now[j].nextState(next, &nextIndex, tree) // nextに追加
 			}
 		}
 		sort.Slice(next[:nextIndex], func(i, j int) bool {
 			return next[i].collectedTrashAmount > next[j].collectedTrashAmount
 		})
-		//iterativeSort(next, nextIndex-1)
+		for j := 0; j < beamWidth*4; j++ {
+			n := now[j].nodeAddress
+			if n == nil || n == tree.Root {
+				continue
+			}
+			if n.zeroChildren() {
+				tree.Release(n)
+			}
+			now[j].nodeAddress = nil
+		}
 		if nextIndex == 0 {
 			break
 		}
 		now, next = next, now
-		//log.Println(nextIndex)
 	}
 	// 最後にゴールに向かうのはnext
-	now[0].toGoal()
-	checkOutput(now[0].outputToString())
-	fmt.Println(now[0].outputToString())
+	rtn := now[0].toGoal()
+	//checkOutput(now[0].outputToString())
+	//fmt.Println(now[0].outputToString())
+	//log.Println(len(now[0].outputToStringForTree()), len(now[0].outputToString()))
+	//log.Println(len(rtn), rtn)
+	ans := now[0].outputToStringForTree() + rtn
+	fmt.Println(ans)
+	//log.Println(time.Now())
+	//log.Println(tree.Root)
+	//tree.TraverseFromChildren(tree.Root)
+	//log.Println(cnt)
+	//log.Println(time.Now())
 }
 
 func MinInt(a, b int) int {
@@ -400,45 +426,80 @@ func MinInt(a, b int) int {
 	return b
 }
 
-func checkOutput(output string) {
-	state := State{position: Point{0, 0}}
-	var reached [40][40]bool
-	for _, o := range output {
-		rtn := state.move(rdluNameToDirection(string(o)))
-		if !rtn {
-			log.Println("invalid output")
-		}
-		reached[state.position.y][state.position.x] = true
-	}
+// 行動履歴を探索木を作って、コピーコストを減らす
+type Node struct {
+	Parent   *Node
+	Children [4]*Node // RDLU毎に子ノードを持つ
+	Move     uint8
+}
 
-	noReaches := make([]Point, 0, N*N)
-	for i := 0; i < N; i++ {
-		//	log.Println(reached[i][:N])
-		for j := 0; j < N; j++ {
-			if !reached[i][j] {
-				noReaches = append(noReaches, Point{i, j})
-			}
-		}
-	}
-	log.Println("noReaches:", len(noReaches), "/", N*N, noReaches)
+func (n *Node) zeroChildren() bool {
+	return n.Children[0] == nil && n.Children[1] == nil && n.Children[2] == nil && n.Children[3] == nil
+}
 
-	if state.position.y != 0 || state.position.x != 0 {
-		log.Println("not reached goal")
+type Tree struct {
+	Root *Node
+	pool sync.Pool
+}
+
+func NewTree() *Tree {
+	return &Tree{
+		pool: sync.Pool{
+			New: func() interface{} {
+				return &Node{}
+			},
+		},
+	}
+}
+
+func (t *Tree) NewNode(parent *Node, move uint8, turn int) *Node {
+	node := t.pool.Get().(*Node)
+	node.Parent = parent
+	node.Move = move
+	return node
+}
+
+func (t *Tree) AddChild(parent *Node, move uint8, turn int) *Node {
+	child := t.NewNode(parent, move, turn)
+	parent.Children[move] = child
+	return child
+}
+
+func (t *Tree) Release(node *Node) {
+	node.Parent.Children[node.Move] = nil
+	//if node.Parent.Children[0] == nil && node.Parent.Children[1] == nil && node.Parent.Children[2] == nil && node.Parent.Children[3] == nil {
+	//if node.Parent.Parent != nil {
+	//t.Release(node.Parent)
+	//}
+	//}
+	// reset
+	node.Parent = nil
+	node.Move = 0
+	for i := 0; i < 4; i++ {
+		node.Children[i] = nil
+	}
+	t.pool.Put(node)
+}
+
+var cnt int
+
+func (t *Tree) TraverseFromChildren(node *Node) {
+	if node == nil {
 		return
 	}
+
+	for _, child := range node.Children {
+		t.TraverseFromChildren(child)
+	}
+	// ここで処理
+	//if node.Children[0] == nil && node.Children[1] == nil && node.Children[2] == nil && node.Children[3] == nil {
+	//t.Release(node)
+	//}
+	//log.Println(node)
+	cnt++
 }
 
-// 特定の位置に値をセットする
-func setValue(array []uint64, position int, value uint8) {
-	index := position / 32
-	bitPosition := position % 32
-	mask := uint64(3) << (bitPosition * 2)
-	array[index] = (array[index] &^ mask) | (uint64(value) << (bitPosition * 2))
-}
-
-// 特定の位置の値を取得する
-func getValue(array []uint64, position int) uint8 {
-	index := position / 32
-	bitPosition := position % 32
-	return uint8((array[index] >> (bitPosition * 2)) & 3)
-}
+//Error seeds: []
+//avarageTime=0.30  maxTime=0.31
+//(Score)sum=477,862,241.00 avarage=9,557,244.82 log=19.984833
+//477862241.00
