@@ -223,11 +223,12 @@ var pool = sync.Pool{
 		return &State{}
 	},
 }
-var getCount int
-var putCount int
+
+//var getCount int
+//var putCount int
 
 func GetState() *State {
-	getCount++
+	//getCount++
 	return pool.Get().(*State)
 }
 
@@ -235,7 +236,7 @@ func PutState(s *State) {
 	if s == nil {
 		return
 	}
-	putCount++
+	//putCount++
 	s.turn = 0
 	s.position = Point{0, 0}
 	s.collectedTrashAmount = 0
@@ -313,7 +314,9 @@ func (s *State) move(d int) bool {
 		s.collectedTrashAmount += 100 * (s.turn + 1)
 	} else {
 		// 久しぶりに訪れるマスにボーナス
-		s.collectedTrashAmount += 10 * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
+		// N = 20~40 N*N = 400~1600
+		V := 20 - ((N * N) / 100)
+		s.collectedTrashAmount += V * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
 	}
 	s.lastVistidTime[s.position.y][s.position.x] = uint16(s.turn)
 	s.turn++
@@ -345,21 +348,31 @@ func (s *State) toGoal() string {
 	}
 	//	gridView(distance)
 	for s.position.y != 0 || s.position.x != 0 {
+		var bestI int = -1
+		var bestDary int = 0
 		for i := 0; i < 4; i++ {
 			if canMove(s.position.y, s.position.x, i) {
 				next := Point{s.position.y + rdluPoint[i].y, s.position.x + rdluPoint[i].x}
 				if distance[next.y][next.x] < distance[s.position.y][s.position.x] {
-					s.move(i)
-					buffer.WriteString(rdluName[i])
-					break
+					if bestDary < int(dirtiness[next.y][next.x])*(s.turn-int(s.lastVistidTime[next.y][next.x])) {
+						bestI = i
+						bestDary = int(dirtiness[next.y][next.x]) * (s.turn - int(s.lastVistidTime[next.y][next.x]))
+					}
+					//s.move(i)
+					//buffer.WriteString(rdluName[i])
+					//break
 				}
 			}
+		}
+		if bestI != -1 {
+			s.move(bestI)
+			buffer.WriteString(rdluName[bestI])
 		}
 	}
 	return buffer.String()
 }
 
-const beamWidth = 40
+const beamWidth = 60
 const beamDepth = 10000
 
 var nowArr, nextArr [beamWidth * 4]State
@@ -406,17 +419,8 @@ func beamSearch() {
 	}
 	// 最後にゴールに向かうのはnext
 	rtn := now[0].toGoal()
-	//checkOutput(now[0].outputToString())
-	//fmt.Println(now[0].outputToString())
-	//log.Println(len(now[0].outputToStringForTree()), len(now[0].outputToString()))
-	//log.Println(len(rtn), rtn)
 	ans := now[0].outputToStringForTree() + rtn
 	fmt.Println(ans)
-	//log.Println(time.Now())
-	//log.Println(tree.Root)
-	//tree.TraverseFromChildren(tree.Root)
-	//log.Println(cnt)
-	//log.Println(time.Now())
 }
 
 func MinInt(a, b int) int {
@@ -481,7 +485,7 @@ func (t *Tree) Release(node *Node) {
 	t.pool.Put(node)
 }
 
-var cnt int
+//var cnt int
 
 func (t *Tree) TraverseFromChildren(node *Node) {
 	if node == nil {
@@ -496,7 +500,7 @@ func (t *Tree) TraverseFromChildren(node *Node) {
 	//t.Release(node)
 	//}
 	//log.Println(node)
-	cnt++
+	//cnt++
 }
 
 //Error seeds: []
