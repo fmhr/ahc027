@@ -84,6 +84,8 @@ var hWall [40][40]bool
 var vWall [40][40]bool
 var dirtiness [40][40]uint16
 
+var Dirtyness int
+
 func readInput() {
 	_, err := fmt.Scan(&N)
 	if err != nil {
@@ -124,6 +126,7 @@ func readInput() {
 		}
 	}
 	log.Printf("N=%v dirty=%v sumdirty=%v\n", N, sumDirtiness/(N*N), sumDirtiness)
+	Dirtyness = sumDirtiness / (N * N)
 	//gridView(dirtiness)
 }
 
@@ -373,7 +376,7 @@ func (s *State) toGoal() string {
 }
 
 const beamWidth = 60
-const beamDepth = 10000
+const beamDepth = 20000
 
 var nowArr, nextArr [beamWidth * 4]State
 
@@ -416,8 +419,12 @@ func beamSearch() {
 			break
 		}
 		now, next = next, now
+		if i > 14000 && now[0].position.y < 10 && now[0].position.x < 10 {
+			break
+		}
 	}
-	// 最後にゴールに向かうのはnext
+	log.Printf("Value=%v\n", now[0].collectedTrashAmount)
+	log.Printf("Turn=%v\n", now[0].turn)
 	rtn := now[0].toGoal()
 	ans := now[0].outputToStringForTree() + rtn
 	fmt.Println(ans)
@@ -425,6 +432,12 @@ func beamSearch() {
 
 func MinInt(a, b int) int {
 	if a < b {
+		return a
+	}
+	return b
+}
+func MaxInt(a, b int) int {
+	if a > b {
 		return a
 	}
 	return b
