@@ -20,8 +20,12 @@ import (
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
 var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
 
+var Version string
+
 func main() {
 	log.SetFlags(log.Lshortfile)
+
+	log.Println("build:", Version)
 	// GCの閾値を高く設定して、GCの実行頻度を減らす
 	//debug.SetGCPercent(2000)
 	// CPU profile

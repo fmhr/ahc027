@@ -1,11 +1,12 @@
-BINARY = bin/main
-SRC = src/*.go
+BINARY = main
+SRC = main.go
 
 .PHONY: build
 build: $(BINARY)
+
 $(BINARY): $(SRC)
-	@echo "Building $(BINARY) ..."
-	cd src && go build -o ../$(BINARY)
+	echo "Building $(BINARY) ..."
+	go build -ldflags "-X main.Version=$(shell date +'%Y%m%d.%H%M%S')" -o ./$(BINARY)
 
 
 clear:
