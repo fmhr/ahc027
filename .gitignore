@@ -3,7 +3,8 @@ tools/
 build/
 sample/
 .vscode/
-fj/
+fj/compiler/*
+fj/worker/*
 
 # Output files and directories
 out/*
