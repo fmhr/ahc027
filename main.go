@@ -61,13 +61,9 @@ func main() {
 	//log.Printf("NumGC: %v\n", m.NumGC)
 	//log.Printf("NumForcedGC: %v\n", m.NumForcedGC)
 	//log.Printf("MemPauseTotal: %vms\n", float64(m.PauseTotalNs)/1000/1000) // ナノ、マイクロ、ミリ
-	// Allocは現在ヒープに割り当てられているバイト数を返します
 	//log.Printf("Alloc = %v MiB", m.Alloc/1024/1024)
-	// TotalAllocはプログラム開始以来割り当てられた全バイト数を返します
 	//log.Printf("TotalAlloc = %v MiB", m.TotalAlloc/1024/1024)
-	// SysはOSから取得した全バイト数を返します
 	log.Printf("Sys=%v MiB", m.Sys/1024/1024)
-	// NumGCはプログラム開始以来のGC実行回数を返します
 	//log.Printf("NumGC = %v\n", m.NumGC)
 	// memory profile
 	if *memprofile != "" {
