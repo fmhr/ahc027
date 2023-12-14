@@ -326,15 +326,14 @@ func (s *State) move(d int) bool {
 	return true
 }
 
-// Goal (0,0)
-func (s *State) toGoal() string {
+func (s *State) toGoal(goal Point) string {
 	var buffer bytes.Buffer
 	// goalからの距離を計算
 	// 現在地からgoalを目指す
 	var distance [40][40]int
-	points := []Point{{0, 0}}
+	points := []Point{goal}
 	reached := [40][40]bool{}
-	reached[0][0] = true
+	reached[goal.y][goal.x] = true
 	for len(points) > 0 {
 		now := points[0]
 		points = points[1:]
@@ -350,7 +349,7 @@ func (s *State) toGoal() string {
 		}
 	}
 	//	gridView(distance)
-	for s.position.y != 0 || s.position.x != 0 {
+	for s.position.y != goal.y || s.position.x != goal.x {
 		var bestI int = -1
 		var bestDary int = 0
 		for i := 0; i < 4; i++ {
@@ -425,9 +424,16 @@ func beamSearch() {
 	}
 	log.Printf("Value=%v\n", now[0].collectedTrashAmount)
 	log.Printf("Turn=%v\n", now[0].turn)
-	rtn := now[0].toGoal()
-	ans := now[0].outputToStringForTree() + rtn
+	unReached := checkAllMove(now[0].outputToStringForTree())
+	moves := ""
+	for i := 0; i < len(unReached); i++ {
+		moves += now[0].toGoal(unReached[i])
+		log.Println("moves:", moves)
+	}
+	rtn := now[0].toGoal(Point{0, 0})
+	ans := now[0].outputToStringForTree() + moves + rtn
 	fmt.Println(ans)
+	checkAllMove(ans)
 }
 
 func MinInt(a, b int) int {
@@ -498,8 +504,6 @@ func (t *Tree) Release(node *Node) {
 	t.pool.Put(node)
 }
 
-//var cnt int
-
 func (t *Tree) TraverseFromChildren(node *Node) {
 	if node == nil {
 		return
@@ -508,15 +512,33 @@ func (t *Tree) TraverseFromChildren(node *Node) {
 	for _, child := range node.Children {
 		t.TraverseFromChildren(child)
 	}
-	// ここで処理
-	//if node.Children[0] == nil && node.Children[1] == nil && node.Children[2] == nil && node.Children[3] == nil {
-	//t.Release(node)
-	//}
-	//log.Println(node)
-	//cnt++
 }
 
-//Error seeds: []
-//avarageTime=0.30  maxTime=0.31
-//(Score)sum=477,862,241.00 avarage=9,557,244.82 log=19.984833
-//477862241.00
+func checkAllMove(movelog string) []Point {
+	s := GetState()
+	reached := [40][40]bool{}
+	reached[0][0] = true
+	for i := 0; i < len(movelog); i++ {
+		switch movelog[i] {
+		case 'R':
+			s.move(Right)
+		case 'D':
+			s.move(Down)
+		case 'L':
+			s.move(Left)
+		case 'U':
+			s.move(Up)
+		}
+		reached[s.position.y][s.position.x] = true
+	}
+	unReached := []Point{}
+	for i := 0; i < N; i++ {
+		for j := 0; j < N; j++ {
+			if !reached[i][j] {
+				unReached = append(unReached, Point{i, j})
+			}
+		}
+	}
+	log.Println("unReached:", unReached)
+	return unReached
+}
