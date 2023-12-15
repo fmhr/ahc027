@@ -83,6 +83,7 @@ var N int
 var hWall [40][40]bool
 var vWall [40][40]bool
 var dirtiness [40][40]uint16
+var dirtAccumulationPerTurn int
 
 var Dirtyness int
 
@@ -123,6 +124,7 @@ func readInput() {
 				log.Fatal(err)
 			}
 			sumDirtiness += int(dirtiness[i][j])
+			dirtAccumulationPerTurn += int(dirtiness[i][j])
 		}
 	}
 	log.Printf("N=%v dirty=%v sumdirty=%v\n", N, sumDirtiness/(N*N), sumDirtiness)
@@ -212,12 +214,13 @@ func canMove(i, j, d int) bool {
 // TODO: あらかじめ、各マスから行動できるマスを計算しておく
 
 type State struct {
-	flag                 bool
-	turn                 int
-	position             Point
-	collectedTrashAmount int
-	lastVistidTime       [40][40]uint16
-	nodeAddress          *Node
+	flag           bool
+	turn           int
+	position       Point
+	priority       int
+	lastVistidTime [40][40]uint16
+	nodeAddress    *Node
+	totalDirty     int // turnで割ると、平均の汚れの量
 }
 
 // sync.Pool
@@ -242,7 +245,7 @@ func PutState(s *State) {
 	//putCount++
 	s.turn = 0
 	s.position = Point{0, 0}
-	s.collectedTrashAmount = 0
+	s.priority = 0
 	s.lastVistidTime = [40][40]uint16{}
 	pool.Put(s)
 }
@@ -265,9 +268,10 @@ func (s *State) Clone() *State {
 	rtn := GetState()
 	rtn.turn = s.turn
 	rtn.position = s.position
-	rtn.collectedTrashAmount = s.collectedTrashAmount
+	rtn.priority = s.priority
 	rtn.lastVistidTime = s.lastVistidTime
 	rtn.nodeAddress = s.nodeAddress
+	rtn.totalDirty = s.totalDirty
 	//log.Printf("rtn=%p s=%p %v\n", &rtn, s, &rtn == s)
 	return rtn
 }
@@ -278,8 +282,9 @@ func (src *State) Copy(dst *State) {
 	dst.position.y = src.position.y
 	dst.position.x = src.position.x
 	dst.lastVistidTime = src.lastVistidTime
-	dst.collectedTrashAmount = src.collectedTrashAmount
+	dst.priority = src.priority
 	dst.nodeAddress = src.nodeAddress
+	dst.totalDirty = src.totalDirty
 }
 
 // func (s *State) nextState(next *[beamWidth * 4]State, nextIndex *int) {
@@ -310,19 +315,23 @@ func (s *State) move(d int) bool {
 	}
 	s.position.y += rdluPoint[d].y
 	s.position.x += rdluPoint[d].x
+
+	// スコア計算に使う
+	tmp := int(dirtiness[s.position.y][s.position.x]) * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
 	// 汚れの総和
-	s.collectedTrashAmount += int(dirtiness[s.position.y][s.position.x]) * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
+	s.priority += int(dirtiness[s.position.y][s.position.x]) * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
 	if s.lastVistidTime[s.position.y][s.position.x] == 0 {
 		// 初めて訪れるマスにボーナス
-		s.collectedTrashAmount += 100 * (s.turn + 1)
+		s.priority += 100 * (s.turn + 1)
 	} else {
 		// 久しぶりに訪れるマスにボーナス
 		// N = 20~40 N*N = 400~1600
 		V := 20 - ((N * N) / 100)
-		s.collectedTrashAmount += V * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
+		s.priority += V * (s.turn - int(s.lastVistidTime[s.position.y][s.position.x]))
 	}
 	s.lastVistidTime[s.position.y][s.position.x] = uint16(s.turn)
 	s.turn++
+	s.totalDirty += dirtAccumulationPerTurn - int(dirtiness[s.position.y][s.position.x]) - tmp
 	return true
 }
 
@@ -402,7 +411,7 @@ func beamSearch() {
 			}
 		}
 		sort.Slice(next[:nextIndex], func(i, j int) bool {
-			return next[i].collectedTrashAmount > next[j].collectedTrashAmount
+			return next[i].priority > next[j].priority
 		})
 		for j := 0; j < beamWidth*4; j++ {
 			n := now[j].nodeAddress
@@ -422,7 +431,7 @@ func beamSearch() {
 			break
 		}
 	}
-	log.Printf("Value=%v\n", now[0].collectedTrashAmount)
+	log.Printf("Value=%v\n", now[0].priority)
 	log.Printf("Turn=%v\n", now[0].turn)
 	unReached := checkAllMove(now[0].outputToStringForTree())
 	moves := ""
@@ -434,6 +443,9 @@ func beamSearch() {
 	ans := now[0].outputToStringForTree() + moves + rtn
 	fmt.Println(ans)
 	checkAllMove(ans)
+	log.Println("turn", now[0].turn, "len", len(ans), "allDirty", dirtAccumulationPerTurn)
+	log.Println("Score", now[0].priority)
+	calculateAverageDirt(ans)
 }
 
 func MinInt(a, b int) int {
@@ -539,6 +551,42 @@ func checkAllMove(movelog string) []Point {
 			}
 		}
 	}
-	log.Println("unReached:", unReached)
 	return unReached
+}
+
+func calculateAverageDirt(move string) {
+	L := len(move)
+	s := GetState()
+	var St int
+	var dirtyMap [40][40]int
+	for t := 0; t < 2*L; t++ {
+		t2 := t % L
+		switch move[t2] {
+		case 'R':
+			s.move(Right)
+		case 'D':
+			s.move(Down)
+		case 'L':
+			s.move(Left)
+		case 'U':
+			s.move(Up)
+		default:
+			panic("invalid move")
+		}
+		for i := 0; i < N; i++ {
+			for j := 0; j < N; j++ {
+				dirtyMap[i][j] += int(dirtiness[i][j])
+			}
+		}
+		dirtyMap[s.position.y][s.position.x] = 0
+		if t >= L {
+			for i := 0; i < N; i++ {
+				for j := 0; j < N; j++ {
+					//St += int(dirtiness[i][j]) * (t - int(s.lastVistidTime[i][j]))
+					St += dirtyMap[i][j]
+				}
+			}
+		}
+	}
+	log.Println("S:", St/L)
 }
