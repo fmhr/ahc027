@@ -16,5 +16,5 @@ CompileCmd = 'go build -o main main.go'
 Binary = 'main'
 Bucket = 'ahc027-binary'
 WorkerURL = 'https://worker-xjfyzk4rjq-an.a.run.app/worker'
-ConcurrentRequests = 1000
+ConcurrentRequests = 500
 TimeLimitMS = 100000

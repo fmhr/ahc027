@@ -7,16 +7,18 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
+	"runtime/trace"
 	"sort"
 	"sync"
 	"time"
 )
 
-// ./bin/a.out -cpuprofile cpu.prof < tools/in/0000.txt
-// ./bin/a.out -cpuprofile cpu.prof -memprofile mem.prof < tools/in/0000.txt
-// go tool pprof -http=localhost:8888 bin/a.out cpu.prof
-// go tool pprof -http=localhost:8888 bin/a.out mem.prof
+// ./main -cpuprofile cpu.prof < tools/in/0000.txt > out.txt
+// ./main -cpuprofile cpu.prof -memprofile mem.prof < tools/in/0000.txt > out.txt
+// go tool pprof -http=localhost:8888 main cpu.prof
+// go tool pprof -http=localhost:8888 main mem.prof
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
 var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
 
@@ -25,9 +27,20 @@ var Version string
 func main() {
 	log.SetFlags(log.Lshortfile)
 
+	f, err := os.Create("trace.out")
+	if err != nil {
+		log.Fatalf("failed to create trace output file: %v", err)
+	}
+	defer f.Close()
+
+	if err := trace.Start(f); err != nil {
+		log.Fatalf("failed to start trace: %v", err)
+	}
+	defer trace.Stop()
+
 	log.Println("build:", Version)
 	// GCの閾値を高く設定して、GCの実行頻度を減らす
-	//debug.SetGCPercent(2000)
+	debug.SetGCPercent(2000)
 	// CPU profile
 	flag.Parse()
 	if *cpuprofile != "" {
@@ -45,7 +58,6 @@ func main() {
 	// メモリ使用量を記録
 	var m runtime.MemStats
 	//runtime.ReadMemStats(&m)
-	//fmt.Printf("Allocations before: %v\n", m.Mallocs)
 	// 実際の処理 --------------------------------------------------
 	startTime := time.Now()
 	readInput()
@@ -63,7 +75,7 @@ func main() {
 	//log.Printf("MemPauseTotal: %vms\n", float64(m.PauseTotalNs)/1000/1000) // ナノ、マイクロ、ミリ
 	//log.Printf("Alloc = %v MiB", m.Alloc/1024/1024)
 	//log.Printf("TotalAlloc = %v MiB", m.TotalAlloc/1024/1024)
-	log.Printf("Sys=%v MiB", m.Sys/1024/1024)
+	//log.Printf("Sys=%v MiB", m.Sys/1024/1024)
 	//log.Printf("NumGC = %v\n", m.NumGC)
 	// memory profile
 	if *memprofile != "" {
@@ -132,41 +144,6 @@ func readInput() {
 	//gridView(dirtiness)
 }
 
-func gridView(grid [40][40]int) {
-	var buffer bytes.Buffer
-	buffer.WriteString("\n")
-	for i := 0; i <= 2*N; i++ {
-		for j := 0; j <= 2*N; j++ {
-			switch {
-			case i%2 == 0 && j%2 == 0:
-				buffer.WriteString("+")
-			case i == 0 || i == 2*N:
-				buffer.WriteString("---")
-			case j == 0 || j == 2*N:
-				buffer.WriteString("|")
-			case i%2 == 0:
-				if hWall[i/2-1][(j-1)/2] {
-					buffer.WriteString("---")
-				} else {
-					buffer.WriteString("   ")
-				}
-			case j%2 == 0:
-				if vWall[(i-1)/2][j/2-1] {
-					buffer.WriteString("|")
-				} else {
-					buffer.WriteString(" ")
-				}
-			default:
-				y := (i - 1) / 2
-				x := (j - 1) / 2
-				buffer.WriteString(fmt.Sprintf("%3d", grid[y][x]))
-			}
-		}
-		buffer.WriteString("\n")
-	}
-	log.Printf("\n %s\n", buffer.String())
-}
-
 // --------------------------------------------------------------------
 // 共通
 type Point struct {
@@ -211,7 +188,6 @@ func canMove(i, j, d int) bool {
 
 // --------------------------------------------------------------------
 // beamsearch
-// TODO: あらかじめ、各マスから行動できるマスを計算しておく
 
 type State struct {
 	flag           bool
@@ -419,7 +395,10 @@ func beamSearch() {
 				continue
 			}
 			if n.zeroChildren() {
-				tree.Release(n)
+				err := tree.Release(n)
+				if err != nil {
+					log.Println(err)
+				}
 			}
 			now[j].nodeAddress = nil
 		}
@@ -431,7 +410,6 @@ func beamSearch() {
 			break
 		}
 	}
-	log.Printf("Value=%v\n", now[0].priority)
 	log.Printf("Turn=%v\n", now[0].turn)
 	unReached := checkAllMove(now[0].outputToStringForTree())
 	moves := ""
@@ -443,8 +421,6 @@ func beamSearch() {
 	ans := now[0].outputToStringForTree() + moves + rtn
 	fmt.Println(ans)
 	checkAllMove(ans)
-	log.Println("turn", now[0].turn, "len", len(ans), "allDirty", dirtAccumulationPerTurn)
-	log.Println("Score", now[0].priority)
 	calculateAverageDirt(ans)
 }
 
@@ -500,27 +476,24 @@ func (t *Tree) AddChild(parent *Node, move uint8, turn int) *Node {
 	return child
 }
 
-func (t *Tree) Release(node *Node) {
-	node.Parent.Children[node.Move] = nil
-	//if node.Parent.Children[0] == nil && node.Parent.Children[1] == nil && node.Parent.Children[2] == nil && node.Parent.Children[3] == nil {
-	//if node.Parent.Parent != nil {
-	//t.Release(node.Parent)
-	//}
-	//}
-	// reset
+func (t *Tree) Release(node *Node) error {
+	if node.Parent != nil {
+		node.Parent.Children[node.Move] = nil
+	}
 	node.Parent = nil
 	node.Move = 0
-	for i := 0; i < 4; i++ {
-		node.Children[i] = nil
-	}
+	node.Children[0] = nil
+	node.Children[1] = nil
+	node.Children[2] = nil
+	node.Children[3] = nil
 	t.pool.Put(node)
+	return nil
 }
 
 func (t *Tree) TraverseFromChildren(node *Node) {
 	if node == nil {
 		return
 	}
-
 	for _, child := range node.Children {
 		t.TraverseFromChildren(child)
 	}
@@ -589,4 +562,40 @@ func calculateAverageDirt(move string) {
 		}
 	}
 	log.Println("S:", St/L)
+}
+
+// visualize
+func gridView(grid [40][40]int) {
+	var buffer bytes.Buffer
+	buffer.WriteString("\n")
+	for i := 0; i <= 2*N; i++ {
+		for j := 0; j <= 2*N; j++ {
+			switch {
+			case i%2 == 0 && j%2 == 0:
+				buffer.WriteString("+")
+			case i == 0 || i == 2*N:
+				buffer.WriteString("---")
+			case j == 0 || j == 2*N:
+				buffer.WriteString("|")
+			case i%2 == 0:
+				if hWall[i/2-1][(j-1)/2] {
+					buffer.WriteString("---")
+				} else {
+					buffer.WriteString("   ")
+				}
+			case j%2 == 0:
+				if vWall[(i-1)/2][j/2-1] {
+					buffer.WriteString("|")
+				} else {
+					buffer.WriteString(" ")
+				}
+			default:
+				y := (i - 1) / 2
+				x := (j - 1) / 2
+				buffer.WriteString(fmt.Sprintf("%3d", grid[y][x]))
+			}
+		}
+		buffer.WriteString("\n")
+	}
+	log.Printf("\n %s\n", buffer.String())
 }
