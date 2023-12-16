@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"runtime"
 	"runtime/debug"
@@ -142,6 +143,18 @@ func readInput() {
 	log.Printf("N=%v dirty=%v sumdirty=%v\n", N, sumDirtiness/(N*N), sumDirtiness)
 	Dirtyness = sumDirtiness / (N * N)
 	//gridView(dirtiness)
+	// 訪れる頻度は、汚れの量に比例する √(汚れの量)
+	var targetFrequency [40][40]float64
+	miniFreq := 1000000.0
+	sumTurn := 0
+	for i := 0; i < N; i++ {
+		for j := 0; j < N; j++ {
+			targetFrequency[i][j] = math.Sqrt(float64(dirtiness[i][j]))
+			miniFreq = math.Min(miniFreq, targetFrequency[i][j])
+			sumTurn += int(math.Ceil(targetFrequency[i][j]))
+		}
+	}
+	log.Println(sumTurn, miniFreq)
 }
 
 // --------------------------------------------------------------------
