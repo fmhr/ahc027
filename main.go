@@ -265,23 +265,16 @@ func (src *State) Copy(dst *State) {
 
 // func (s *State) nextState(next *[beamWidth * 4]State, nextIndex *int) {
 func (s *State) nextState(next []*State, nextIndex *int, tree *Tree) {
-	var cnt int = 0
 	for i := 0; i < 4; i++ {
 		s.Copy(next[*nextIndex])
 		if next[*nextIndex].move(i) {
 			next[*nextIndex].flag = true
 			// tree update
-			p := s.nodeAddress
-			c := tree.AddChild(p, uint8(i), s.turn)
+			c := tree.AddChild(s.nodeAddress, uint8(i), s.turn)
 			next[*nextIndex].nodeAddress = c
 			*nextIndex++
-			cnt++
 		}
 	}
-	// 四方塞がれているマスには到達しないので、ここは未達
-	//if cnt == 0 {
-	//tree.Release(s.nodeAddress)
-	//}
 }
 
 // move returns true if the move was successful
