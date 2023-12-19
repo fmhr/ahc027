@@ -556,8 +556,6 @@ func calculateAverageDirt(move string) {
 	log.Println("S:", St/L)
 }
 
-// visualize
-
 func gridView(grid [40][40]int) {
 	var buffer bytes.Buffer
 	buffer.WriteString("\n")
